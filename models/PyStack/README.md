@@ -14,7 +14,8 @@ unzip texas_lookup.zip
 2) Install [Anaconda](https://www.anaconda.com/) (optional, for using conda install)
 3) Install python packages:
 ```
-conda install numpy tqdm tensorflow # (can use pip install, but numpy, tf will be slower)
+create a conda environment with python=3.10
+pip install numpy tqdm tensorflow==2.12.0
 pip install flask flask_socketio # (optional, for playing vs bot GUI)
 pip install selenium # (optional, for playing against Slumbot) (needs selenium* installed)
 pip install graphviz # (optional, for displaying tree's) (needs graphviz* installed)
