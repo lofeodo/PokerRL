@@ -37,8 +37,16 @@ class Train(ValueNn):
 	def compile_keras_model(self, keras_model):
 		''' compiles keras model '''
 		loss = BasicHuberLoss(delta=1.0)
-		optimizer = tf.keras.optimizers.Adam(lr=arguments.learning_rate, beta_1=0.9, beta_2=0.999, decay=0.0)
-		keras_model.compile(loss=loss, optimizer=optimizer, metrics=[masked_huber_loss])
+		optimizer = tf.keras.optimizers.Adam(
+			learning_rate=arguments.learning_rate,
+			beta_1=0.9,
+			beta_2=0.999
+		)
+		keras_model.compile(
+			loss=loss,
+			optimizer=optimizer,
+			metrics=[masked_huber_loss]
+		)
 
 
 	def train(self, num_epochs, batch_size, verbose=1, validation_size=0.1, start_epoch=0):
