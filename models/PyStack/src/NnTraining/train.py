@@ -19,17 +19,22 @@ class Train(ValueNn):
 		'''
 		# set up estimator from ValueNn
 		super().__init__(street)
-		# resume model if exists
-		if os.path.exists(self.model_path):
-			print('LOADING PREVIOUS MODEL...')
-			self.keras_model = tf.keras.models.load_model( self.model_path,
-								   custom_objects = {'loss':BasicHuberLoss(delta=1.0),
-													 'masked_huber_loss':masked_huber_loss} )
-		else: # compile model
-			print('COMPILING MODEL...')
-			self.compile_keras_model(self.keras_model)
+		
+		# Debug prints
+		print("Data directories to scan:")
+		for dir_path in data_dir_list:
+			print(f"- {dir_path}")
+			if os.path.exists(dir_path):
+				files = list(os.scandir(dir_path))
+				print(f"  Found {len(files)} files")
+				for f in files:
+					print(f"    - {f.path}")
+			else:
+				print(f"  WARNING: Directory does not exist!")
+		
 		# set up read paths for train/valid datasets
 		self.tfrecords = [f.path for dirpath in data_dir_list for f in os.scandir(dirpath)]
+		print(f"\nTotal tfrecord files found: {len(self.tfrecords)}")
 		# random.shuffle(self.tfrecords)
 		self.create_keras_callback()
 
@@ -45,27 +50,64 @@ class Train(ValueNn):
 		keras_model.compile(
 			loss=loss,
 			optimizer=optimizer,
-			metrics=[masked_huber_loss]
+			metrics=[masked_huber_loss],
+			run_eagerly=True
 		)
 
 
 	def train(self, num_epochs, batch_size, verbose=1, validation_size=0.1, start_epoch=0):
 		''' trains model with specified parameters '''
-		# get list of train and validation set filenames
-		num_valid_files = int(len(self.tfrecords)*validation_size) if validation_size < 1 else validation_size
-		train_filenames = self.tfrecords[ :-num_valid_files ]
-		random.shuffle(train_filenames)
-		valid_filenames = self.tfrecords[ -num_valid_files: ]
-		# create tf.data iterators
-		train_iterator = create_iterator( filenames=train_filenames, train=True,
-										   batch_size=batch_size,
-										   x_shape=self.x_shape, y_shape=self.y_shape )
-		valid_iterator = create_iterator( filenames=valid_filenames, train=False,
-										   batch_size=batch_size,
-										   x_shape=self.x_shape, y_shape=self.y_shape )
+		# Use all files for both training and validation
+		train_filenames = self.tfrecords
+		valid_filenames = self.tfrecords  # Use same files
+		
+		# create tf.data iterators with internal splitting
+		train_iterator = create_iterator(filenames=train_filenames, 
+									   train=True,
+									   batch_size=batch_size,
+									   x_shape=self.x_shape, 
+									   y_shape=self.y_shape,
+									   validation_size=validation_size,  # Add this parameter
+									   is_validation=False)  # Add this parameter
+		
+		valid_iterator = create_iterator(filenames=valid_filenames, 
+									   train=False,
+									   batch_size=batch_size,
+									   x_shape=self.x_shape, 
+									   y_shape=self.y_shape,
+									   validation_size=validation_size,  # Add this parameter
+									   is_validation=True)  # Add this parameter
+		
+		# Try to fetch one batch to verify data pipeline
+		try:
+			print("Attempting to fetch one batch from train_iterator...")
+			sample_batch = next(iter(train_iterator))
+			print(f"Input shape: {sample_batch[0].shape}")
+			print(f"Output shape: {sample_batch[1].shape}")
+			
+			# Try a single forward pass
+			print("Attempting single forward pass...")
+			prediction = self.keras_model(sample_batch[0])
+			print(f"Prediction shape: {prediction.shape}")
+			
+			# Try computing loss
+			print("Attempting to compute loss...")
+			loss_fn = self.keras_model.loss
+			loss_value = loss_fn(sample_batch[1], prediction)
+			print(f"Loss value: {loss_value}")
+		except Exception as e:
+			print(f"Error during debugging: {str(e)}")
+			raise e
+
 		# count num of elements in both sets
 		num_train_elements = len(train_filenames) * arguments.tfrecords_batch_size
 		num_valid_elements = len(valid_filenames) * arguments.tfrecords_batch_size
+		
+		print(f"Number of training elements: {num_train_elements}")
+		print(f"Number of validation elements: {num_valid_elements}")
+		print(f"Steps per epoch: {num_train_elements // batch_size}")
+		print(f"Validation steps: {num_valid_elements // batch_size}")
+		
 		# train model
 		print('Training model...')
 		print("==============")

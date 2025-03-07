@@ -42,28 +42,38 @@ def create_parse_fn(x_shape, y_shape):
 	return parse_fn
 
 
-def create_iterator(filenames, train, x_shape, y_shape, batch_size, num_cores=os.cpu_count()):
+def create_iterator(filenames, train, x_shape, y_shape, batch_size, validation_size=0.1, is_validation=False, num_cores=os.cpu_count()):
 	'''
 	@param: [str,...] :Filenames for the TFRecords files.
 	@param: bool      :Boolean whether training (True) or testing (False).
 	@param: [1]       :input  shape (not including batch size) ex: [224,224,3] if img
 	@param: [1]       :output shape (not including batch size) ex: [224,224,3] if img
 	@param: int       :return batches of this size.
+	@param: float     :fraction of data to use for validation
+	@param: bool      :whether this iterator is for validation data
 	@param: int       :number of cores to use
 	@return tf.data.Dataset object
 	'''
-	# Create a TensorFlow Dataset-object which has functionality
-	# for reading and shuffling data from TFRecords files.
 	buffer_size = 22 * 1024 * 1024  # 22 MB per file
 	dataset = tf.data.TFRecordDataset(filenames=filenames, num_parallel_reads=num_cores)
 	
-	if train:  # If training then read a buffer of the given size and randomly shuffle it.
-		dataset = dataset.shuffle(buffer_size=5000,                # applies sliding window
-								reshuffle_each_iteration=True)     # shuffles indices each iter
+	# Add deterministic shuffle to ensure consistent train/val split
+	dataset = dataset.shuffle(buffer_size=5000, seed=42)
+	
+	# Split the data using skip and take
+	val_size = int(validation_size * 5000)  # Approximate size based on buffer
+	if is_validation:
+		dataset = dataset.take(val_size)
+	else:
+		dataset = dataset.skip(val_size)
+	
+	if train:  # If training then add additional shuffle for training dynamics
+		dataset = dataset.shuffle(buffer_size=5000,
+								reshuffle_each_iteration=True)
 	
 	dataset = dataset.repeat()
 	
-	# Parse the serialized data in the TFRecords files and create batches
+	# Parse the serialized data and create batches
 	dataset = dataset.map(
 		create_parse_fn(x_shape, y_shape),
 		num_parallel_calls=tf.data.AUTOTUNE

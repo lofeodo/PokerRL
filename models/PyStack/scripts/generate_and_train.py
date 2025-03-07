@@ -45,7 +45,7 @@ for street in streets:
     #     '--approximate', approximate
     # ], env=env)
     
-    # # Train with minimal epochs just to test
+    # Train with minimal epochs just to test
     print(f"=== Training ===")
     subprocess.run([
         'python', 

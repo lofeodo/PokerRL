@@ -32,11 +32,13 @@ class Parameters():
 		self.num_neurons = [500,500,500,500] # must be size of num_layers
 		self.learning_rate = 1e-4
 		self.batch_size = 1024
-		self.num_epochs = 50
+		#self.num_epochs = 50
+		self.num_epochs = 5 # for testing
 		# how often to save the model during training
 		self.save_epoch = 2
 		# how many epochs to train for
-		self.epoch_count = 10
+		#self.epoch_count = 10
+		self.epoch_count = 1 # for testing
 		# TF RECORDS
 		self.tfrecords_batch_size = 1024*10 # ~200MB
 		# DATA GENERATION
@@ -44,7 +46,7 @@ class Parameters():
 		self.data_path = './data/TrainSamples/'
 		# self.data_path = r'D:\Datasets\Pystack\NoLimitTexasHoldem'
 		# the number of iterations that DeepStack runs CFR for
-		#self.cfr_iters = 300
+		# self.cfr_iters = 300
 		self.cfr_iters = 1 # for testing
 		# the number of preliminary CFR iterations which DeepStack doesn't
 		# factor into the average strategy (included in cfr_iters)

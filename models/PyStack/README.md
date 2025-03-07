@@ -1,4 +1,15 @@
-# PyStack (HUNL Poker Bot)
+# PokerRL implementation of PyStack
+## Set Up
+`conda env create -f environment.yml` from the root of the PokerRL project to set up conda env
+unzip PyStack/empty_folders.zip
+unzip PyStack/src/TerminalEquity/matrices/texas_lookup.zip
+`python scripts/generate_and_train.py --street {street_id} --starting-idx {starting_idx} --approximate {approximate}` from models/PyStack
+to generate data and train for a given street, starting id, and approximate.
+Street $\in$ {1 = preflop, 2 = flop, 3 = turn, 4 = river}
+Starting Id: Allows you to continue where you left off. Just set to 1 if running for the first time.
+Approximate $\in$ {root_node, leaf_node}
+
+# --- DEPRECATED README STUFF --- PyStack (HUNL Poker Bot)
 
 Python implementation of [Deepstack](https://www.deepstack.ai/) w/ Numpy, Tensorflow 1.13. Works on Windows, Linux.
 
