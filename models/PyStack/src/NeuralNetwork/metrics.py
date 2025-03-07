@@ -27,7 +27,4 @@ def masked_huber_loss(y_true, y_pred):
 	quadratic = tf.minimum(abs_error, 1.0)
 	linear = abs_error - quadratic
 	loss = 0.5 * tf.square(quadratic) + 1.0 * linear
-	# Apply mask for zero values in y_true
-	mask = tf.cast(tf.not_equal(y_true, 0), tf.float32)
-	loss = loss * mask
 	return tf.reduce_mean(loss)
