@@ -1,2 +1,3 @@
 models/PyStack/src/TerminalEquity/matrices/texas_lookup.npy
 models/PyStack/data/*
+*.pyc
