@@ -17,10 +17,8 @@ from arguments_parser import parse_arguments
 
 
 if arguments.XLA:
-	config = tf.ConfigProto()
-	config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
-	sess = tf.Session(config=config)
-	tf.keras.backend.set_session(sess)
+	# Enable XLA
+	tf.config.optimizer.set_jit(True)
 
 
 def main():

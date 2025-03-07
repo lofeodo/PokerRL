@@ -27,10 +27,14 @@ class ValueNn():
 		self._set_shapes()
 		# load model or create one
 		if pretrained_weights:
-			self.keras_model = tf.keras.models.load_model( self.model_path,
-								   custom_objects = {'loss':BasicHuberLoss(delta=1.0),
-													 'masked_huber_loss':masked_huber_loss} )
-			self.graph = tf.get_default_graph()
+			self.keras_model = tf.keras.models.load_model(
+				self.model_path,
+				custom_objects = {
+					'loss': BasicHuberLoss(delta=1.0),
+					'masked_huber_loss': masked_huber_loss
+				},
+				compile=True
+			)
 		else: # create keras model
 			self.keras_model = self._build_net()
 		# print architecture summary
@@ -44,12 +48,14 @@ class ValueNn():
 		@param: [b,nnI] :tensor containing b batches instances of neural net inputs
 		@param: [b,nnO] :tensor in which to store b batches of neural net outputs
 		'''
-		with self.graph.as_default():
-			total_elements, batch_size = inputs.shape[0], 10000
-			for i in range(0, total_elements, batch_size):
-				start, end = i, i + batch_size
-				end = end if end < total_elements else total_elements
-				out[ start:end, : ] = self.keras_model.predict_on_batch(inputs[ start:end, : ])
+		total_elements, batch_size = inputs.shape[0], 10000
+		for i in range(0, total_elements, batch_size):
+			start, end = i, i + batch_size
+			out[start:end] = self.keras_model.predict(
+				inputs[start:end], 
+				batch_size=batch_size,
+				verbose=0
+			)
 
 
 	def _set_shapes(self):
