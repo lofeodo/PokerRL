@@ -1,12 +1,13 @@
 import sys
 import os
+import subprocess
 os.chdir('..')
-sys.path.append(os.path.join(os.getcwd(),'src'))
+base_dir = os.getcwd()
+sys.path.append(os.path.join(base_dir, 'src'))
 
-from Game.card_to_string_conversion import card_to_string
 from Settings.arguments import arguments
+from Game.card_to_string_conversion import card_to_string
 from arguments_parser import parse_arguments
-from train_nn import main as train_nn
 
 # Just test with river for initial test
 streets = [4] # River only
@@ -21,13 +22,37 @@ for street in streets:
     
     print(f"Processing {street_name}...")
     
-    # Generate tiny dataset for testing
-    os.system(f'python scripts/generate_data.py {street} {starting_idx} {approximate} --sample_size=100')
+    # Use subprocess with environment variables
+    env = os.environ.copy()
+    env['PYTHONPATH'] = os.path.join(base_dir, 'src')
+    
+    # Generate data
+    subprocess.run([
+        'python',
+        os.path.join(base_dir, 'scripts', 'generate_data.py'),
+        '--street', str(street),
+        '--starting_idx', str(starting_idx),
+        '--approximate', approximate,
+        '--sample_size', '100'
+    ], env=env)
     
     # Convert sample to TFRecords
-    os.system(f'python scripts/convert_to_tfrecords.py {street} {starting_idx} {approximate}')
+    subprocess.run([
+        'python',
+        os.path.join(base_dir, 'scripts', 'convert_to_tfrecords.py'),
+        '--street', str(street),
+        '--starting_idx', str(starting_idx),
+        '--approximate', approximate
+    ], env=env)
     
     # Train with minimal epochs just to test
-    os.system(f'python scripts/train_nn.py {street} {starting_idx} {approximate} --epochs=2')
+    subprocess.run([
+        'python', 
+        os.path.join(base_dir, 'scripts', 'train_nn.py'),
+        '--street', str(street),
+        '--starting_idx', str(starting_idx),
+        '--approximate', approximate,
+        '--epochs', '1'
+    ], env=env)
     
     print(f"Completed {street_name}")

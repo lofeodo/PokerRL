@@ -13,10 +13,14 @@ from Game.card_combinations import card_combinations
 class TerminalEquity():
 	def __init__(self):
 		# load preflop matrix
-		self._pf_equity = np.load('src/TerminalEquity/matrices/pf_equity.npy')
+		current_dir = os.path.dirname(os.path.abspath(__file__))
+		matrices_dir = os.path.join(current_dir, 'matrices')
+
+		self._pf_equity = np.load(os.path.join(matrices_dir, 'pf_equity.npy'))
 		# load card blocking matrix from disk if exists
-		if os.path.exists('src/TerminalEquity/matrices/block_matrix.npy'):
-			self._block_matrix = np.load('src/TerminalEquity/matrices/block_matrix.npy')
+		block_matrix_path = os.path.join(matrices_dir, 'block_matrix.npy')
+		if os.path.exists(block_matrix_path):
+			self._block_matrix = np.load(block_matrix_path)
 		else:
 			self._block_matrix = self._create_block_matrix()
 
