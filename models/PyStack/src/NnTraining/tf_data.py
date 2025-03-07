@@ -54,35 +54,49 @@ def create_iterator(filenames, train, x_shape, y_shape, batch_size, validation_s
 	@param: int       :number of cores to use
 	@return tf.data.Dataset object
 	'''
-	buffer_size = 22 * 1024 * 1024  # 22 MB per file
+	# Load dataset
 	dataset = tf.data.TFRecordDataset(filenames=filenames, num_parallel_reads=num_cores)
 	
-	# Add deterministic shuffle to ensure consistent train/val split
-	dataset = dataset.shuffle(buffer_size=5000, seed=42)
+	# Count total number of elements
+	total_elements = sum(1 for _ in dataset)
+	print(f"Total elements in dataset: {total_elements}")
 	
-	# Split the data using skip and take
-	val_size = int(validation_size * 5000)  # Approximate size based on buffer
+	# Calculate validation split size based on actual data
+	val_size = int(validation_size * total_elements)
+	print(f"Validation size: {val_size}")
+	
+	# Reset dataset after counting
+	dataset = tf.data.TFRecordDataset(filenames=filenames, num_parallel_reads=num_cores)
+	
+	# Add deterministic shuffle with smaller buffer for small dataset
+	dataset = dataset.shuffle(buffer_size=total_elements, seed=42)
+	
+	# Split based on actual data size
 	if is_validation:
 		dataset = dataset.take(val_size)
 	else:
 		dataset = dataset.skip(val_size)
 	
-	if train:  # If training then add additional shuffle for training dynamics
-		dataset = dataset.shuffle(buffer_size=5000,
+	if train:
+		dataset = dataset.shuffle(buffer_size=total_elements,
 								reshuffle_each_iteration=True)
-	
-	dataset = dataset.repeat()
 	
 	# Parse the serialized data and create batches
 	dataset = dataset.map(
 		create_parse_fn(x_shape, y_shape),
 		num_parallel_calls=tf.data.AUTOTUNE
-	).batch(batch_size)
+	)
+	
+	# Use drop_remainder=False to handle partial batches
+	dataset = dataset.batch(batch_size, drop_remainder=False)
+	
+	# Only repeat after batching for small datasets
+	dataset = dataset.repeat()
 	
 	# prefetch for better performance
 	dataset = dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
 	
-	return dataset
+	return iter(dataset)
 
 
 
