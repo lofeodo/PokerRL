@@ -3,7 +3,6 @@ Script that converts npy files into TFRecords files
 '''
 import sys
 import os
-os.chdir('..')
 sys.path.append( os.path.join(os.getcwd(),'src') )
 
 from Settings.arguments import arguments
