@@ -2,6 +2,7 @@
 	Evaluates any 7 card combination
 '''
 import numpy as np
+import os
 
 from Settings.constants import constants
 from Settings.arguments import arguments
@@ -10,7 +11,9 @@ from Game.card_tools import card_tools
 
 class Evaluator():
 	def __init__(self):
-		self._texas_lookup = np.load('src/TerminalEquity/matrices/texas_lookup.npy')
+		current_dir = os.path.dirname(os.path.abspath(__file__))
+		lookup_path = os.path.join(current_dir, 'matrices', 'texas_lookup.npy')
+		self._texas_lookup = np.load(lookup_path)
 		self._idx_to_cards = self._create_index_to_cards_matrix()
 
 

@@ -118,12 +118,12 @@ class TFRecordsConverter():
 		filename = '{}.tfrecord'.format(self.counter)
 		out_path = os.path.join(dir_path, filename)
 		# Open a TFRecordWriter for the output-file.
-		with tf.python_io.TFRecordWriter(out_path) as writer:
+		with tf.io.TFRecordWriter(out_path) as writer:
 			# Iterate over all the X, Y pairs.
 			for x, y in zip(X, Y):
 				# Convert the image to raw bytes.
-				x_bytes = x.tostring()
-				y_bytes = y.tostring()
+				x_bytes = x.tobytes()
+				y_bytes = y.tobytes()
 				# Create a dict with the data we want to save in the
 				# TFRecords file. You can add more relevant data here.
 				data = {
