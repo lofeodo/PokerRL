@@ -1,4 +1,3 @@
-
 '''
 	A depth-limited lookahead of the game tree used for re-solving.
 	Most of the lookahead array's have following shapes: [A{d-1}, B{d-2}, NTNAN{d-2}, b, P, I], where:
@@ -85,7 +84,10 @@ class Lookahead():
 		scaler *= arguments.cfr_iters - arguments.cfr_skip_iters
 		# broadcasting scaler: [A{0}, b, 1] -> [A{0}, b, I]
 		# [A{0}, b, I] /= [A{0}, b, 1]
-		out.children_cfvs /= scaler
+		# Add small epsilon to avoid division by zero
+		epsilon = 1e-10
+		safe_scaler = np.where(scaler < epsilon, epsilon, scaler)
+		out.children_cfvs /= safe_scaler
 		return out
 
 
@@ -231,12 +233,16 @@ class Lookahead():
 		avg_strat_sum = np.sum(self.layers[1].strategies_avg, axis=0, keepdims=True)
 		# broadcasting: [ 1, 1, 1, b, I] -> [A{0}, 1, 1, b, I]
 		# [A{0}, 1, 1, b, I] /= [ 1, 1, 1, b, I]
-		self.layers[1].strategies_avg /= avg_strat_sum
-		# if the strategy is nans (zero reach), strategy does not matter but we need to make sure
-		# it sums to one -> now we set to always fold
-		# note: np.nan != np.nan = True, np.nan == np.nan = False
-		self.layers[1].strategies_avg[0][ self.layers[1].strategies_avg[0] != self.layers[1].strategies_avg[0] ] = 1
-		self.layers[1].strategies_avg[ self.layers[1].strategies_avg != self.layers[1].strategies_avg ] = 0
+		epsilon = 1e-10  # Small constant to avoid division by zero
+		safe_avg_strat_sum = np.where(avg_strat_sum < epsilon, epsilon, avg_strat_sum)
+		self.layers[1].strategies_avg /= safe_avg_strat_sum
+
+		# If you want to be extra safe and ensure valid probabilities:
+		# After division, ensure the strategies sum to 1 where we have valid probabilities
+		valid_mask = (avg_strat_sum >= epsilon)
+		if valid_mask.any():
+			# Normalize only where we have valid probabilities
+			self.layers[1].strategies_avg[valid_mask] /= np.sum(self.layers[1].strategies_avg[valid_mask], axis=-1, keepdims=True)
 
 
 	def _compute_normalize_average_cfvs(self):
