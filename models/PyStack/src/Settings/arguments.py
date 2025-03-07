@@ -44,7 +44,8 @@ class Parameters():
 		self.data_path = './data/TrainSamples/'
 		# self.data_path = r'D:\Datasets\Pystack\NoLimitTexasHoldem'
 		# the number of iterations that DeepStack runs CFR for
-		self.cfr_iters = 300
+		#self.cfr_iters = 300
+		self.cfr_iters = 1 # for testing
 		# the number of preliminary CFR iterations which DeepStack doesn't
 		# factor into the average strategy (included in cfr_iters)
 		self.cfr_skip_iters = 0

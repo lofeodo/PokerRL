@@ -4,7 +4,6 @@
 '''
 import sys
 import os
-os.chdir('..')
 sys.path.append( os.path.join(os.getcwd(),'src') )
 
 import tensorflow as tf

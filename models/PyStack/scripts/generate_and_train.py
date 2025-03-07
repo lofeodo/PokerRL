@@ -1,7 +1,6 @@
 import sys
 import os
 import subprocess
-os.chdir('..')
 base_dir = os.getcwd()
 sys.path.append(os.path.join(base_dir, 'src'))
 
@@ -27,25 +26,27 @@ for street in streets:
     env['PYTHONPATH'] = os.path.join(base_dir, 'src')
     
     # Generate data
-    subprocess.run([
-        'python',
-        os.path.join(base_dir, 'scripts', 'generate_data.py'),
-        '--street', str(street),
-        '--starting_idx', str(starting_idx),
-        '--approximate', approximate,
-        '--sample_size', '100'
-    ], env=env)
+    # print(f"=== Generating data ===")
+    # subprocess.run([
+    #     'python',
+    #     os.path.join(base_dir, 'scripts', 'generate_data.py'),
+    #     '--street', str(street),
+    #     '--starting_idx', str(starting_idx),
+    #     '--approximate', approximate,
+    # ], env=env)
     
-    # Convert sample to TFRecords
-    subprocess.run([
-        'python',
-        os.path.join(base_dir, 'scripts', 'convert_to_tfrecords.py'),
-        '--street', str(street),
-        '--starting_idx', str(starting_idx),
-        '--approximate', approximate
-    ], env=env)
+    # # Convert sample to TFRecords
+    # print(f"=== Converting data to TFRecords ===")
+    # subprocess.run([
+    #     'python',
+    #     os.path.join(base_dir, 'scripts', 'convert_npy_to_tfrecords.py'),
+    #     '--street', str(street),
+    #     '--starting_idx', str(starting_idx),
+    #     '--approximate', approximate
+    # ], env=env)
     
-    # Train with minimal epochs just to test
+    # # Train with minimal epochs just to test
+    print(f"=== Training ===")
     subprocess.run([
         'python', 
         os.path.join(base_dir, 'scripts', 'train_nn.py'),

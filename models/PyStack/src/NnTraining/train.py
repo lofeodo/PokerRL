@@ -68,6 +68,10 @@ class Train(ValueNn):
 		num_valid_elements = len(valid_filenames) * arguments.tfrecords_batch_size
 		# train model
 		print('Training model...')
+		print("==============")
+		print(f"cwd: {os.path.abspath(os.getcwd())}")
+		print(f"model_path: {os.path.abspath(self.model_path)}")
+		print("==============")
 		h = self.keras_model.fit( train_iterator,
 								  validation_data = valid_iterator,
 								  steps_per_epoch = num_train_elements // batch_size,
@@ -83,7 +87,7 @@ class Train(ValueNn):
 												  LearningRateScheduler, EarlyStopping
 		# tensorboard callback
 		tb_logdir = os.path.join( self.model_dir_path, 'tensorboard' )
-		tb = KerasTensorBoard( log_dir=tb_logdir, histogram_freq=25, write_grads=True )
+		tb = tf.keras.callbacks.TensorBoard(log_dir=tb_logdir, histogram_freq=25, write_graph=True)
 		# Early stopping callback
 		es = EarlyStopping(monitor='val_loss', patience=20, verbose=0, mode='min')
 		# Save model callback
@@ -94,7 +98,6 @@ class Train(ValueNn):
 		lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, min_delta=1e-4, mode='min')
 		# set keras callback for training
 		self.callbacks = [tb, mc, lrs]
-
 
 
 class KerasTensorBoard(tf.keras.callbacks.TensorBoard):
@@ -108,7 +111,7 @@ class KerasTensorBoard(tf.keras.callbacks.TensorBoard):
 
 	def set_model(self, model):
 		# Setup writer for validation metrics
-		self.val_writer = tf.summary.FileWriter(self.val_log_dir)
+		self.val_writer = tf.summary.create_file_writer(self.val_log_dir)
 		super(KerasTensorBoard, self).set_model(model)
 
 	def on_epoch_end(self, epoch, logs=None):
@@ -117,13 +120,9 @@ class KerasTensorBoard(tf.keras.callbacks.TensorBoard):
 		# be plotted on the same figure with the training metrics
 		logs = logs or {}
 		val_logs = {k.replace('val_', 'epoch_'): v for k, v in logs.items() if k.startswith('val_')}
-		for name, value in val_logs.items():
-			summary = tf.Summary()
-			summary_value = summary.value.add()
-			summary_value.simple_value = value.item()
-			summary_value.tag = name
-			self.val_writer.add_summary(summary, epoch)
-		self.val_writer.flush()
+		with self.val_writer.as_default():
+			for name, value in val_logs.items():
+				tf.summary.scalar(name, value, step=epoch)
 		# Pass the remaining logs to `TensorBoard.on_epoch_end`
 		logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
 		super(KerasTensorBoard, self).on_epoch_end(epoch, logs)
