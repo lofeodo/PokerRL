@@ -176,12 +176,6 @@ class DataGeneration():
 				print('took:{}'.format(time.time()-t0))
 			# save
 			fpath = os.path.normpath(os.path.join(self.dirpath, '{}.{}'))
-			print("============")
-			print(f"cwd: {os.getcwd()}")
-			print(f"dirpath: {os.path.abspath(self.dirpath)}")
-			print(f"dirpath exists: {os.path.exists(self.dirpath)}")
-			print(f"fpath: {os.path.abspath(fpath)}")
-			print("============")
 			np.save(fpath.format('inputs', self.counter), INPUTS.astype(np.float32))
 			np.save(fpath.format('targets', self.counter), TARGETS.astype(np.float32))
 			np.save(fpath.format('boards', self.counter), BOARDS.astype(np.uint8))

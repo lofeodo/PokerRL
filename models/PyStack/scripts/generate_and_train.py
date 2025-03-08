@@ -49,7 +49,7 @@ subprocess.run([
     '--street', str(street),
     '--start-idx', str(starting_idx),
     '--approximate', str(approximate),
-    '--epochs', f'{arguments.epochs}'
+    '--epochs', f'{arguments.num_epochs}'
 ], env=env)
 
 print(f"Completed {street_name}")

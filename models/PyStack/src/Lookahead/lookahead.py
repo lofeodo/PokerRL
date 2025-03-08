@@ -231,18 +231,36 @@ class Lookahead():
 		'''
 		# [ 1, 1, 1, b, I] = [A{0}, 1, 1, b, I]
 		avg_strat_sum = np.sum(self.layers[1].strategies_avg, axis=0, keepdims=True)
-		# broadcasting: [ 1, 1, 1, b, I] -> [A{0}, 1, 1, b, I]
-		# [A{0}, 1, 1, b, I] /= [ 1, 1, 1, b, I]
+		
 		epsilon = 1e-10  # Small constant to avoid division by zero
 		safe_avg_strat_sum = np.where(avg_strat_sum < epsilon, epsilon, avg_strat_sum)
 		self.layers[1].strategies_avg /= safe_avg_strat_sum
 
-		# If you want to be extra safe and ensure valid probabilities:
-		# After division, ensure the strategies sum to 1 where we have valid probabilities
+		# Create a mask that matches the full shape of strategies_avg
 		valid_mask = (avg_strat_sum >= epsilon)
+		# Broadcast the mask to match strategies_avg shape
+		valid_mask = np.broadcast_to(valid_mask, self.layers[1].strategies_avg.shape)
+
 		if valid_mask.any():
-			# Normalize only where we have valid probabilities
-			self.layers[1].strategies_avg[valid_mask] /= np.sum(self.layers[1].strategies_avg[valid_mask], axis=-1, keepdims=True)
+			# Get the shape for proper axis handling
+			shape = self.layers[1].strategies_avg.shape
+			# Reshape to 2D array for easier normalization
+			strat_flat = self.layers[1].strategies_avg.reshape(-1, shape[-1])
+			mask_flat = valid_mask.reshape(-1, shape[-1])
+			
+			# Normalize only valid rows
+			valid_rows = mask_flat.any(axis=1)
+			if valid_rows.any():
+				row_sums = np.sum(strat_flat[valid_rows], axis=1, keepdims=True)
+				strat_flat[valid_rows] = np.divide(
+					strat_flat[valid_rows],
+					row_sums,
+					where=row_sums > epsilon,
+					out=np.zeros_like(strat_flat[valid_rows])
+				)
+			
+			# Reshape back to original shape
+			self.layers[1].strategies_avg = strat_flat.reshape(shape)
 
 
 	def _compute_normalize_average_cfvs(self):
