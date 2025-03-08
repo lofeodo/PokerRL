@@ -30,50 +30,15 @@ log "Working directory: $(pwd)"
 
 # Setup conda
 log "=== Setting up Conda ==="
-log "Conda version: $(conda --version)"
-log "Checking conda initialization..."
-log "working directory: $(pwd)"
-source ~/.bashrc  # Make sure conda is properly initialized
+source $HOME/miniconda3/etc/profile.d/conda.sh
 
-# Check if YAML file exists
-if [ ! -f "pokerrl_env_slurm.yaml" ]; then
-    log "ERROR: pokerrl_env_slurm.yaml not found in current directory: $(pwd)"
-    log "Directory contents:"
-    ls -l
-    exit 1
-fi
-
-# Remove existing environment if it exists
-if conda env list | grep -q "pokerrl"; then
-    log "Removing existing pokerrl environment..."
-    conda env remove -n pokerrl -y
-    if [ $? -ne 0 ]; then
-        log "ERROR: Failed to remove existing environment"
-        exit 1
-    fi
-fi
-
-# Create new environment from YAML with detailed output
-log "Creating pokerrl environment from YAML..."
-conda env create -f pokerrl_env_slurm.yaml --verbose
-
-# Activate the conda environment
+# Activate existing environment
 log "Activating pokerrl environment..."
-eval "$(conda shell.bash hook)"
 conda activate pokerrl
 
 # Verify Python version
 PYTHON_VERSION=$(python -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-if [[ "$PYTHON_VERSION" != "3.10" ]]; then
-    log "ERROR: Wrong Python version $PYTHON_VERSION. Expected 3.10"
-    exit 1
-fi
-
-# Print Python environment info
-log "=== Python Environment ==="
-log "Python path: $(which python)"
-log "Python version: $(python --version)"
-log "Conda environment: $CONDA_DEFAULT_ENV"
+log "Python version: $PYTHON_VERSION"
 
 # Test only river street with root_nodes
 street=4  # river
