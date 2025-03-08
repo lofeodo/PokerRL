@@ -13,12 +13,14 @@ from NeuralNetwork.value_nn import ValueNn
 from NeuralNetwork.metrics import BasicHuberLoss, masked_huber_loss
 
 class Train(ValueNn):
-	def __init__(self, data_dir_list, street):
+	def __init__(self, data_dir_list, street, approximate='root_nodes'):
 		'''
 		@param: [str,...] :list of paths to directories that contains tf records
+		@param: int :current street
+		@param: str :whether to train 'root_nodes' or 'leaf_nodes'
 		'''
 		# set up estimator from ValueNn
-		super().__init__(street)
+		super().__init__(street, approximate=approximate)
 		
 		# set up read paths for train/valid datasets
 		self.tfrecords = [f.path for dirpath in data_dir_list for f in os.scandir(dirpath)]
@@ -111,13 +113,13 @@ class Train(ValueNn):
 		# Early stopping callback
 		es = EarlyStopping(monitor='val_loss', patience=20, verbose=0, mode='min')
 		# Save model callback
-		mc = ModelCheckpoint(self.model_path, save_best_only=True, monitor='val_loss', mode='min')
+		mc = ModelCheckpoint(self.model_path, save_best_only=True, monitor='val_loss', mode='min', verbose=1)
 		# Change learning rate
 		lrs = LearningRateScheduler( lambda epoch: arguments.learning_rate )
 		# Reducting LR callback
 		lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, min_delta=1e-4, mode='min')
 		# set keras callback for training
-		self.callbacks = [tb, mc, lrs]
+		self.callbacks = [tb, mc, lrs, es, lr]
 
 
 class KerasTensorBoard(tf.keras.callbacks.TensorBoard):

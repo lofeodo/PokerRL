@@ -28,7 +28,7 @@ def main():
 	data_dirs = []
 	data_dirs.append( os.path.join(os.getcwd(), 'Data', 'TrainSamples', street_name, '{}_{}'.format(approximate, 'tfrecords')) )
 	# data_dirs.append( os.path.join(r'D:\Datasets\Pystack\NoLimitTexasHoldem\river', 'tfrecords_1m_16') )
-	T = Train(data_dir_list=data_dirs, street=street)
+	T = Train(data_dir_list=data_dirs, street=street, approximate=approximate)
 	T.train(num_epochs=arguments.num_epochs, batch_size=arguments.batch_size, validation_size=0.1, start_epoch=starting_idx)
 
 
