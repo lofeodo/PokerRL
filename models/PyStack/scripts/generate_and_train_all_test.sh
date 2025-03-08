@@ -55,7 +55,7 @@ run_training() {
         python scripts/generate_and_train.py \
             --street $street \
             --approximate $approximate \
-            --starting_idx 1
+            --start-idx 1 
     } 2>&1 | tee "logs/python_output_test_${SLURM_JOB_ID}.log"
     
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
