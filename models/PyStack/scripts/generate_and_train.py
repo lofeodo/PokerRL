@@ -9,7 +9,7 @@ from Game.card_to_string_conversion import card_to_string
 from arguments_parser import parse_arguments
 
 args = sys.argv[1:]
-street, approximate,starting_idx = parse_arguments(args)
+street, approximate, starting_idx = parse_arguments(args)
 
 # Generate data for this street
 street_name = card_to_string.street_to_name(street)
@@ -49,7 +49,7 @@ subprocess.run([
     '--street', str(street),
     '--starting_idx', str(starting_idx),
     '--approximate', approximate,
-    '--epochs', '1'
+    '--epochs', f'{arguments.epochs}'
 ], env=env)
 
 print(f"Completed {street_name}")

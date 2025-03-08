@@ -51,13 +51,11 @@ run_training() {
     
     log "Starting $approximate for river"
     
-    # Run the Python script with minimal epochs
     {
         python scripts/generate_and_train.py \
             --street $street \
             --approximate $approximate \
-            --starting_idx 1 \
-            --epochs 1
+            --starting_idx 1
     } 2>&1 | tee "logs/python_output_test_${SLURM_JOB_ID}.log"
     
     if [ ${PIPESTATUS[0]} -ne 0 ]; then
