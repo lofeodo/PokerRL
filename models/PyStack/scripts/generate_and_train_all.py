@@ -34,7 +34,8 @@ def run_combination(street, approximate, start_idx=1):
 
 def main():
     # Configuration
-    streets = [4, 3, 2, 1]
+    #streets = [4, 3, 2, 1]
+    streets = [3, 2, 1]
     approximates = ['root_nodes', 'leaf_nodes']
     start_idx = 1
     
