@@ -35,8 +35,8 @@ log "Checking conda initialization..."
 source ~/.bashrc  # Make sure conda is properly initialized
 
 # Check if YAML file exists
-if [ ! -f "pokerrl_env.yaml" ]; then
-    log "ERROR: pokerrl_env.yaml not found in $(pwd)"
+if [ ! -f "pokerrl_env_slurm.yaml" ]; then
+    log "ERROR: pokerrl_env_slurm.yaml not found in $(pwd)"
     ls -l  # List directory contents
     exit 1
 fi
@@ -53,13 +53,13 @@ fi
 
 # Create new environment from YAML with detailed output
 log "Creating pokerrl environment from YAML..."
-conda env create -f pokerrl_env.yaml --verbose
+conda env create -f pokerrl_env_slurm.yaml --verbose
 if [ $? -ne 0 ]; then
     log "ERROR: Failed to create conda environment"
     log "Conda debug info:"
     conda info
     log "YAML file contents:"
-    cat pokerrl_env.yaml
+    cat pokerrl_env_slurm.yaml
     exit 1
 fi
 
