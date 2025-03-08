@@ -2,6 +2,7 @@
 #SBATCH --job-name=DeepStack_train
 #SBATCH --output=logs/DeepStack_train_%A_%a.out  # %A is job ID, %a is array index
 #SBATCH --error=logs/DeepStack_train_%A_%a.err
+#SBATCH --partition=nodegpupool
 #SBATCH --time=48:00:00
 #SBATCH --cpus-per-task=12     # Use all CPUs on one node
 #SBATCH --mem=120G             # Almost all memory on one node (122880MB ≈ 120GB)

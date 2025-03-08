@@ -2,6 +2,7 @@
 #SBATCH --job-name=DS_test
 #SBATCH --output=logs/DS_test_%A.out
 #SBATCH --error=logs/DS_test_%A.err
+#SBATCH --partition=nodegpupool
 #SBATCH --time=1:00:00        # Reduced to 1 hour for testing
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=120G
