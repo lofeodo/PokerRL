@@ -25,6 +25,11 @@ class ValueNn():
 		self.model_path = os.path.join(self.model_dir_path, model_name)
 		# set input, output shapes
 		self._set_shapes()
+		# Register the custom objects globally
+		tf.keras.utils.get_custom_objects().update({
+			'BasicHuberLoss': BasicHuberLoss,
+			'masked_huber_loss': masked_huber_loss
+		})
 		# load model or create one
 		if pretrained_weights:
 			self.keras_model = tf.keras.models.load_model(

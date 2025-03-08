@@ -8,8 +8,8 @@ import tensorflow as tf
 
 # main loss
 class BasicHuberLoss(tf.keras.losses.Loss):
-	def __init__(self, delta=1.0, name='basic_huber_loss'):
-		super().__init__(name=name)
+	def __init__(self, delta=1.0, name='basic_huber_loss', reduction=tf.keras.losses.Reduction.AUTO):
+		super().__init__(name=name, reduction=reduction)
 		self.delta = delta
 
 	def call(self, y_true, y_pred):
