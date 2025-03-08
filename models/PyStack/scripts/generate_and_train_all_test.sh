@@ -30,18 +30,38 @@ log "Working directory: $(pwd)"
 
 # Setup conda
 log "=== Setting up Conda ==="
-eval "$(conda shell.bash hook)"
+log "Conda version: $(conda --version)"
+log "Checking conda initialization..."
+source ~/.bashrc  # Make sure conda is properly initialized
+
+# Check if YAML file exists
+if [ ! -f "pokerrl_env.yaml" ]; then
+    log "ERROR: pokerrl_env.yaml not found in $(pwd)"
+    ls -l  # List directory contents
+    exit 1
+fi
 
 # Remove existing environment if it exists
 if conda env list | grep -q "pokerrl"; then
     log "Removing existing pokerrl environment..."
-    conda env remove -n pokerrl
+    conda env remove -n pokerrl -y
+    if [ $? -ne 0 ]; then
+        log "ERROR: Failed to remove existing environment"
+        exit 1
+    fi
 fi
 
-# Create new environment from YAML
+# Create new environment from YAML with detailed output
 log "Creating pokerrl environment from YAML..."
-conda env create -f pokerrl_env.yaml
-conda activate pokerrl
+conda env create -f pokerrl_env.yaml --verbose
+if [ $? -ne 0 ]; then
+    log "ERROR: Failed to create conda environment"
+    log "Conda debug info:"
+    conda info
+    log "YAML file contents:"
+    cat pokerrl_env.yaml
+    exit 1
+fi
 
 # Verify Python version
 PYTHON_VERSION=$(python -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
