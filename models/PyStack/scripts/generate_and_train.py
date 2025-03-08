@@ -9,7 +9,7 @@ from Game.card_to_string_conversion import card_to_string
 from arguments_parser import parse_arguments
 
 args = sys.argv[1:]
-street, approximate, starting_idx = parse_arguments(args)
+street, starting_idx, approximate = parse_arguments(args)
 
 # Generate data for this street
 street_name = card_to_string.street_to_name(street)
@@ -27,8 +27,8 @@ subprocess.run([
     'python',
     os.path.join(base_dir, 'scripts', 'generate_data.py'),
     '--street', str(street),
-    '--starting_idx', str(starting_idx),
-    '--approximate', approximate,
+    '--start-idx', str(starting_idx),
+    '--approximate', str(approximate),
 ], env=env)
 
 # Convert sample to TFRecords
@@ -37,8 +37,8 @@ subprocess.run([
     'python',
     os.path.join(base_dir, 'scripts', 'convert_npy_to_tfrecords.py'),
     '--street', str(street),
-    '--starting_idx', str(starting_idx),
-    '--approximate', approximate
+    '--start-idx', str(starting_idx),
+    '--approximate', str(approximate)
 ], env=env)
 
 # Train with minimal epochs just to test
@@ -47,8 +47,8 @@ subprocess.run([
     'python', 
     os.path.join(base_dir, 'scripts', 'train_nn.py'),
     '--street', str(street),
-    '--starting_idx', str(starting_idx),
-    '--approximate', approximate,
+    '--start-idx', str(starting_idx),
+    '--approximate', str(approximate),
     '--epochs', f'{arguments.epochs}'
 ], env=env)
 
