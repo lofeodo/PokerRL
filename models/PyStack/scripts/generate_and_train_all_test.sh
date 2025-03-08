@@ -3,9 +3,9 @@
 #SBATCH --output=logs/DS_test_%A.out
 #SBATCH --error=logs/DS_test_%A.err
 #SBATCH --partition=nodegpupool
-#SBATCH --time=1:00:00        # Reduced to 1 hour for testing
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=120G
+#SBATCH --time=1:00:00
+#SBATCH --cpus-per-task=4     # Reduced CPUs
+#SBATCH --mem=32G            # Reduced memory
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -92,3 +92,9 @@ if ! run_training $street "root_nodes"; then
 fi
 
 log "Test completed successfully"
+
+# Add debug information about available resources
+echo "Available nodes:"
+sinfo -N -l
+echo "Queue status:"
+squeue
