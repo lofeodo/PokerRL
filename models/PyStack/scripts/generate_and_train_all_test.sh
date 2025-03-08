@@ -32,12 +32,14 @@ log "Working directory: $(pwd)"
 log "=== Setting up Conda ==="
 log "Conda version: $(conda --version)"
 log "Checking conda initialization..."
+log "working directory: $(pwd)"
 source ~/.bashrc  # Make sure conda is properly initialized
 
 # Check if YAML file exists
 if [ ! -f "pokerrl_env_slurm.yaml" ]; then
-    log "ERROR: pokerrl_env_slurm.yaml not found in $(pwd)"
-    ls -l  # List directory contents
+    log "ERROR: pokerrl_env_slurm.yaml not found in current directory: $(pwd)"
+    log "Directory contents:"
+    ls -l
     exit 1
 fi
 
@@ -53,25 +55,7 @@ fi
 
 # Create new environment from YAML with detailed output
 log "Creating pokerrl environment from YAML..."
-log "Current directory contents:"
-ls -l
-
-# Check YAML file content
-log "Content of pokerrl_env_slurm.yaml:"
-cat pokerrl_env_slurm.yaml
-
-# Try creating environment with maximum verbosity
-conda env create -f pokerrl_env_slurm.yaml --verbose --debug
-if [ $? -ne 0 ]; then
-    log "ERROR: Failed to create conda environment"
-    log "Conda debug info:"
-    conda info
-    log "Conda environment list:"
-    conda env list
-    log "Directory contents:"
-    ls -la
-    exit 1
-fi
+conda env create -f pokerrl_env_slurm.yaml --verbose
 
 # Activate the conda environment
 log "Activating pokerrl environment..."
