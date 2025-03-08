@@ -53,13 +53,23 @@ fi
 
 # Create new environment from YAML with detailed output
 log "Creating pokerrl environment from YAML..."
-conda env create -f pokerrl_env_slurm.yaml --verbose
+log "Current directory contents:"
+ls -l
+
+# Check YAML file content
+log "Content of pokerrl_env_slurm.yaml:"
+cat pokerrl_env_slurm.yaml
+
+# Try creating environment with maximum verbosity
+conda env create -f pokerrl_env_slurm.yaml --verbose --debug
 if [ $? -ne 0 ]; then
     log "ERROR: Failed to create conda environment"
     log "Conda debug info:"
     conda info
-    log "YAML file contents:"
-    cat pokerrl_env_slurm.yaml
+    log "Conda environment list:"
+    conda env list
+    log "Directory contents:"
+    ls -la
     exit 1
 fi
 
