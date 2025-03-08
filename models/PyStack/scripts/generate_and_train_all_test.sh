@@ -63,6 +63,11 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Activate the conda environment
+log "Activating pokerrl environment..."
+eval "$(conda shell.bash hook)"
+conda activate pokerrl
+
 # Verify Python version
 PYTHON_VERSION=$(python -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
 if [[ "$PYTHON_VERSION" != "3.10" ]]; then
