@@ -59,12 +59,15 @@ class Parameters():
 		self.max_board_count = 250 # maximum number of boards to generate - used to limit memory usage
 
 		# FOR TESTING
+		# self.gen_different_boards = 25
+		# self.gen_num_files = 1
 		# self.gen_batch_size = 1
-		# self.cfr_iters = 1
-		# self.cfr_skip_iters = 0
+		# self.cfr_iters = 10
+		# self.cfr_skip_iters = 2
 		# self.batch_size = 16
 		# self.num_epochs = 1
 		# self.save_epoch = 1
+		# self.max_board_count = 25
 
 		assert(self.gen_different_boards % self.gen_num_files == 0)
 
