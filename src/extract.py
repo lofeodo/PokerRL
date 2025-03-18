@@ -3,7 +3,7 @@ import json
 import os
 from tqdm import tqdm
 
-VALID_GAME_TYPES = ["holdem", "omaha", "stud", "razz", "draw"]
+
 
 def extract_holdem_hands(input_file, output_file, max_hands=10000):
     """Extract Texas Hold'em hands from the IRC dataset"""

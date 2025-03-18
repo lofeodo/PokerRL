@@ -11,11 +11,6 @@ class EnhancedBlueprintStrategy:
     """
     Enhanced blueprint strategy implementation using Counterfactual Regret Minimization (CFR)
     for poker games, incorporating full card information.
-    
-    References:
-    - Zinkevich et al. (2007) "Regret Minimization in Games with Incomplete Information"
-    - Bowling et al. (2015) "Heads-up limit hold'em poker is solved"
-    - Brown & Sandholm (2017) "Safe and Nested Subgame Solving for Imperfect-Information Games"
     """
     
     def __init__(self, num_actions=3):
@@ -799,7 +794,7 @@ def test_blueprint_strategy():
 def main():
    # Generate training data or load existing data
    print("Generating training data from simulated self-play...")
-   training_data = generate_training_data(num_hands=5000)
+   training_data = generate_training_data(num_hands=1000000)
    print(f"Generated {len(training_data)} poker hands")
    
    # Initialize and train blueprint strategy
