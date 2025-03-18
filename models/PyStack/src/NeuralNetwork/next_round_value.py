@@ -85,18 +85,26 @@ class NextRoundValue():
 		@param: int   :batch of how many situations are evaluated simultaneously (usually will be = 1)
 		'''
 		self.iter = 0
-		# setting up current board and possible next boards
 		self.current_board = board
-		self.next_boards = card_tools.get_next_round_boards(self.current_board)
-		self.next_boards_count = self.next_boards.shape[0]
-		# init pot sizes [b, 1], where p - number of pot sizes, b - batch size (here not the same as in other files)
+		
+		# Get all possible next boards but only store the count
+		all_next_boards = card_tools.get_next_round_boards(self.current_board)
+		total_boards_count = all_next_boards.shape[0]
+		
+		# Sample boards first, before any array initialization
+		if total_boards_count > arguments.max_board_count:
+			indices = np.random.choice(total_boards_count, arguments.max_board_count, replace=False)
+			self.next_boards = all_next_boards[indices]
+			self.next_boards_count = arguments.max_board_count
+		else:
+			self.next_boards = all_next_boards
+			self.next_boards_count = total_boards_count
+		
+		# Now we can safely initialize with the reduced count
 		self.pot_sizes = np.repeat(pot_sizes.reshape([-1,1]), batch_size, axis=1)
 		self.pot_sizes = self.pot_sizes.reshape([-1,1])
 		self.batch_size = self.pot_sizes.shape[0]
-		# setting up num board features used in neural network (all boards will give same shape = 69)
 		self.num_board_features = card_tools.convert_board_to_nn_feature(np.zeros([])).shape[0]
-		# init variables, used for next street root nodes approximation
-		# and for current street leaf nodes approximation
 		self._init_root_approximation_vars()
 		self._init_leaf_approximation_vars()
 

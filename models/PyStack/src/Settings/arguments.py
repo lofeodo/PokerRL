@@ -56,6 +56,7 @@ class Parameters():
 		self.batch_size = 256
 		self.num_epochs = 50
 		self.save_epoch = 2 # how often to save the model during training
+		self.max_board_count = 250 # maximum number of boards to generate - used to limit memory usage
 
 		# FOR TESTING
 		# self.gen_batch_size = 1
