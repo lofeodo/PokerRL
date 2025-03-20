@@ -1,15 +1,15 @@
-
-
 from collections import defaultdict
 import pickle
 import random
 import numpy as np
+import time
 
 from itertools import combinations
 from depthLimitedSolver import DepthLimitedSolver
 from pokerGameState import PokerGameState
 from opponentModel import OpponentModel
 from pokerAgent import PokerAgent
+from CFRNode import CFRNode
 
 from handEvaluator import HandEvaluator
 
@@ -67,6 +67,11 @@ def play_against_agent(agent, strategy="random"):
             if action == PokerGameState.FOLD:
                 print("Agent folds.")
                 print(f"You win {pot_before_action}.")
+                
+                # Update blueprint before returning
+                if agent.enable_learning:
+                    agent.update_blueprint_from_solver()
+                    
                 return new_state, 1  # Player wins
             elif action == PokerGameState.CHECK_CALL:
                 if state.player_bets[0] < state.player_bets[1]:
@@ -178,6 +183,11 @@ def play_against_agent(agent, strategy="random"):
             if player_action == PokerGameState.FOLD:
                 print("You fold.")
                 print(f"Agent wins {pot_before_action}.")
+                
+                # Update blueprint before returning
+                if agent.enable_learning:
+                    agent.update_blueprint_from_solver()
+                    
                 return None, 0  # Agent wins
             elif player_action == PokerGameState.CHECK_CALL:
                 if state.player_bets[0] > state.player_bets[1]:
@@ -217,19 +227,26 @@ def play_against_agent(agent, strategy="random"):
             player_hand = HandEvaluator.evaluate_hand(state.player_hole_cards[0], state.board)
             opponent_hand = HandEvaluator.evaluate_hand(state.player_hole_cards[1], state.board)
             
+            result = None
             if player_hand < opponent_hand:  # Lower is better
                 print(f"Agent wins {state.pot}.")
-                return state, 0  # Agent wins
+                result = 0  # Agent wins
             elif player_hand > opponent_hand:
                 print(f"You win {state.pot}.")
-                return state, 1  # Player wins
+                result = 1  # Player wins
             else:
                 print(f"Split pot. Each player receives {state.pot / 2}.")
-                return state, 0.5  # Tie
+                result = 0.5  # Tie
+            
+            # Update blueprint before returning
+            if agent.enable_learning:
+                agent.update_blueprint_from_solver()
+                
+            return state, result
                 
     return state, None  # Shouldn't reach here
       
-def self_play_training(num_hands=1000, save_path="self_play_blueprint.pkl"):
+def self_play_training(num_hands=1000, save_path="self_play_blueprint.pkl", enable_learning=True):
     """
     Train the agent through self-play.
     
@@ -239,6 +256,7 @@ def self_play_training(num_hands=1000, save_path="self_play_blueprint.pkl"):
     Args:
         num_hands: Number of hands to play
         save_path: Path to save the trained blueprint
+        enable_learning: Whether to enable continuous learning
         
     Returns:
         The trained agent
@@ -246,10 +264,10 @@ def self_play_training(num_hands=1000, save_path="self_play_blueprint.pkl"):
     print(f"Starting self-play training for {num_hands} hands...")
     
     # Initialize the agent with a small blueprint
-    agent = PokerAgent()
+    agent = PokerAgent(blueprint_path=save_path, enable_learning=enable_learning)
     
     # Create a second agent using the same blueprint
-    opponent = PokerAgent()
+    opponent = PokerAgent(blueprint_path=save_path, enable_learning=False)
     opponent.blueprint_cfr = agent.blueprint_cfr
     opponent.solver = DepthLimitedSolver(agent.blueprint_cfr, max_depth=3)
     
@@ -328,30 +346,90 @@ def self_play_training(num_hands=1000, save_path="self_play_blueprint.pkl"):
                 opponent_wins += 1
             else:
                 ties += 1
+                
+        # Update and save blueprint after each hand if learning is enabled
+        if enable_learning:
+            agent.update_blueprint_from_solver()
     
     # Print results
     print("\nSelf-play training completed.")
     print(f"Results: Agent wins: {agent_wins}, Opponent wins: {opponent_wins}, Ties: {ties}")
     
-    # Save the trained blueprint
-    agent.blueprint_cfr.save(save_path)
+    # No need for final save since we save after each hand
     
     return agent
 
+def analyze_learning(blueprint_path, compare_path=None):
+    """
+    Analyze what the agent has learned by comparing blueprints.
+    
+    Args:
+        blueprint_path: Path to current blueprint
+        compare_path: Optional path to another blueprint for comparison
+    """
+    import pickle
+    import numpy as np
+    
+    with open(blueprint_path, 'rb') as f:
+        current = pickle.load(f)
+    
+    print(f"Loaded blueprint with {len(current)} information sets")
+    print(f"Blueprint file: {blueprint_path}")
+    
+    # Display some statistics about the blueprint
+    action_counts = {"fold": 0, "call": 0, "raise": 0}
+    for strategy in current.values():
+        max_action = np.argmax(strategy)
+        if max_action == 0:
+            action_counts["fold"] += 1
+        elif max_action == 1:
+            action_counts["call"] += 1
+        elif max_action == 2:
+            action_counts["raise"] += 1
+    
+    print("\nAction distribution (preferred action):")
+    for action, count in action_counts.items():
+        percentage = count / len(current) * 100 if len(current) > 0 else 0
+        print(f"  {action}: {count} ({percentage:.1f}%)")
+    
+    if compare_path:
+        with open(compare_path, 'rb') as f:
+            previous = pickle.load(f)
+        
+        print(f"\nComparing with: {compare_path}")
+        print(f"Comparison blueprint has {len(previous)} information sets")
+        
+        # Find new info sets
+        new_info_sets = set(current.keys()) - set(previous.keys())
+        print(f"New information sets learned: {len(new_info_sets)}")
+        
+        # Find changed strategies
+        changed = 0
+        for info_set in set(current.keys()).intersection(set(previous.keys())):
+            if not np.array_equal(current[info_set], previous[info_set]):
+                changed += 1
+        
+        print(f"Information sets with updated strategies: {changed}")
 
 def main():
     """Main function to demonstrate the poker agent."""
     # Parse command line arguments
     import argparse
     parser = argparse.ArgumentParser(description="Poker AI with depth-limited solving")
-    parser.add_argument("--mode", choices=["play", "train", "self_play"], default="play",
-                        help="Mode: play against AI, train blueprint, or self-play training")
+    parser.add_argument("--mode", choices=["play", "train", "self_play", "analyze"], default="play",
+                        help="Mode: play against AI, train blueprint, self-play training, or analyze learning")
     parser.add_argument("--blueprint", type=str, default="blueprint.pkl",
                         help="Path to blueprint strategy file")
     parser.add_argument("--hands", type=int, default=10,
                         help="Number of hands to play or train")
     parser.add_argument("--strategy", choices=["random", "tight", "loose", "aggressive"], 
                         default="random", help="Strategy to use when playing against the AI")
+    parser.add_argument("--enable-learning", action="store_true", default=True,
+                        help="Enable continuous learning from gameplay")
+    parser.add_argument("--backup", type=str, default=None,
+                        help="Backup file path for analysis comparison")
+    parser.add_argument("--compare-with", type=str, default=None,
+                        help="Alternative blueprint file path for comparison in analysis")
     
     args = parser.parse_args()
     
@@ -364,19 +442,24 @@ def main():
         
     elif args.mode == "self_play":
         # Train through self-play
-        self_play_training(num_hands=args.hands, save_path=args.blueprint)
+        self_play_training(num_hands=args.hands, save_path=args.blueprint, enable_learning=args.enable_learning)
+        
+    elif args.mode == "analyze":
+        # Analyze learning progress
+        analyze_learning(args.blueprint, args.backup)
         
     elif args.mode == "play":
         # Play against the AI
         print("Initializing poker agent...")
-        agent = PokerAgent(blueprint_path=args.blueprint)
+        agent = PokerAgent(blueprint_path=args.blueprint, enable_learning=args.enable_learning)
         
         # Play multiple hands
         agent_wins = 0
         player_wins = 0
         ties = 0
         
-        for _ in range(args.hands):
+        for hand_num in range(args.hands):
+            print(f"\nPlaying hand {hand_num+1}/{args.hands}")
             _, result = play_against_agent(agent, strategy=args.strategy)
             
             if result == 0:
@@ -392,6 +475,12 @@ def main():
         print(f"Agent wins: {agent_wins}")
         print(f"Player wins: {player_wins}")
         print(f"Ties: {ties}")
+        
+        # Show learning summary
+        if args.enable_learning:
+            print(f"\nAI learned from {agent.hands_played} hands")
+            print(f"Total information sets in blueprint: {len(agent.blueprint_cfr.nodes)}")
+            print(f"New experiences acquired: {len(agent.new_experiences)}")
 
 
 if __name__ == "__main__":

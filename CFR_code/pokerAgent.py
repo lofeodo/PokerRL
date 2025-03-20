@@ -1,6 +1,7 @@
 from depthLimitedCFR import DepthLimitedCFR
 from depthLimitedSolver import DepthLimitedSolver
 from pokerGameState import PokerGameState
+import time
 
 class PokerAgent:
     """
@@ -8,7 +9,7 @@ class PokerAgent:
     and opponent modeling to make decisions.
     """
     
-    def __init__(self, blueprint_path=None, stack_size=1000, small_blind=5, big_blind=10):
+    def __init__(self, blueprint_path=None, stack_size=1000, small_blind=5, big_blind=10, enable_learning=True):
         """
         Initialize the poker agent.
         
@@ -17,9 +18,12 @@ class PokerAgent:
             stack_size: Starting stack size for the game
             small_blind: Small blind amount
             big_blind: Big blind amount
+            enable_learning: Whether to enable continuous learning
         """
         # Initialize the blueprint strategy
         self.blueprint_cfr = DepthLimitedCFR(max_depth=2)
+        self.blueprint_path = blueprint_path
+        self.enable_learning = enable_learning
         
         # Try to load a pre-computed blueprint
         if blueprint_path and self.blueprint_cfr.load(blueprint_path):
@@ -41,6 +45,10 @@ class PokerAgent:
         
         # Current game state
         self.current_state = None
+        
+        # Learning tracking
+        self.hands_played = 0
+        self.new_experiences = {}
         
     def start_new_hand(self, position=0):
         """
@@ -134,3 +142,36 @@ class PokerAgent:
         self.current_state.deal_community_cards()
         
         return self.current_state.board
+        
+    def update_blueprint_from_solver(self):
+        """
+        Update the blueprint strategy with what was learned during gameplay.
+        """
+        if not self.enable_learning:
+            return False
+            
+        # Get subgame solutions from the solver
+        for subgame_key, subgame_strategy in self.solver.previously_played_subgames.items():
+            # Update the blueprint with new strategies
+            for info_set, strategy in subgame_strategy.items():
+                # Create node if it doesn't exist
+                if info_set not in self.blueprint_cfr.nodes:
+                    self.blueprint_cfr.nodes[info_set] = self.blueprint_cfr.get_node(info_set)
+                
+                # Update strategy with higher weight for real gameplay experience
+                experience_weight = 10  # Give more weight to real play vs simulation
+                node = self.blueprint_cfr.nodes[info_set]
+                node.strategy_sum += experience_weight * strategy
+                
+                # Also track in new experiences for analysis
+                self.new_experiences[info_set] = strategy
+        
+        # Increment hands played counter
+        self.hands_played += 1
+        
+        # Save after every hand (only to the main file, no backups)
+        if self.enable_learning and self.blueprint_path:
+            print(f"Saving updated blueprint after hand {self.hands_played}...")
+            self.blueprint_cfr.save(self.blueprint_path)
+            
+        return True
