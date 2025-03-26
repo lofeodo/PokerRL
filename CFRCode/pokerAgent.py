@@ -2,6 +2,8 @@ from depthLimitedCFR import DepthLimitedCFR
 from depthLimitedSolver import DepthLimitedSolver
 from pokerGameState import PokerGameState
 import time
+import numpy as np
+import torch
 
 class PokerAgent:
     """
@@ -161,10 +163,31 @@ class PokerAgent:
                 # Update strategy with higher weight for real gameplay experience
                 experience_weight = 10  # Give more weight to real play vs simulation
                 node = self.blueprint_cfr.nodes[info_set]
-                node.strategy_sum += experience_weight * strategy
                 
-                # Also track in new experiences for analysis
-                self.new_experiences[info_set] = strategy
+                # Convert strategy to tensor on same device as node.strategy_sum if needed
+                if isinstance(strategy, np.ndarray):
+                    strategy_tensor = torch.tensor(strategy, device=node.strategy_sum.device)
+                else:
+                    strategy_tensor = strategy
+                    
+                # Add to strategy sum
+                node.strategy_sum += experience_weight * strategy_tensor
+                
+                # Safely store in new_experiences (without worrying about device)
+                try:
+                    # Try to get numpy version (will work for numpy arrays or CPU tensors)
+                    self.new_experiences[info_set] = np.array(strategy)
+                except:
+                    try:
+                        # If that fails, try to move to CPU first
+                        if hasattr(strategy, 'cpu'):
+                            self.new_experiences[info_set] = strategy.cpu().numpy()
+                        else:
+                            # Last resort, just store the object as is
+                            self.new_experiences[info_set] = strategy
+                    except:
+                        # If all else fails, just store as is
+                        self.new_experiences[info_set] = strategy
         
         # Increment hands played counter
         self.hands_played += 1

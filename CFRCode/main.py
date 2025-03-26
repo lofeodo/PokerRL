@@ -10,7 +10,7 @@ from pokerGameState import PokerGameState
 from opponentModel import OpponentModel
 from pokerAgent import PokerAgent
 from CFRNode import CFRNode
-
+from depthLimitedCFR import DepthLimitedCFR
 from handEvaluator import HandEvaluator
 
 def play_against_agent(agent, strategy="random"):
