@@ -1,0 +1,31 @@
+[project]
+name = "PokerHandsDataset"
+version = "0.1"
+license = { file = "LICENSE" }
+readme = "README.md"
+dynamic = ["dependencies"]
+authors = [{ "name" = "Allen Wang" }]
+
+[tool.black]
+line-length = 120
+preview = true
+enable-unstable-feature = ['string_processing']
+
+[tool.pyright]
+include = ["src"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
