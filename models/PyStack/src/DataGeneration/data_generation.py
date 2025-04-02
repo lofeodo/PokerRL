@@ -162,8 +162,10 @@ class DataGeneration():
 			for b in range(num_different_boards_per_file):
 				t0 = time.time()
 				# create random board
-				if self.street == 1: board = np.zeros([], dtype=arguments.int_dtype)
-				else: board = np.random.choice(card_count, size=num_board_cards, replace=False)
+				if self.street == 1: 
+					board = np.zeros((0,), dtype=arguments.int_dtype)  # Creates empty array with shape (0,)
+				else: 
+					board = np.random.choice(card_count, size=num_board_cards, replace=False)
 				# init targets, inputs and solve it
 				if approximate == 'root_nodes':
 					inputs, targets = self.solve_root_node(board, batch_size)
