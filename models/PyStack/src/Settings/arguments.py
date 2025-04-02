@@ -31,7 +31,7 @@ class Parameters():
 		# the neural net architecture
 		self.num_neurons = [500,500,500,500] # must be size of num_layers
 		self.learning_rate = 1e-4
-		self.batch_size = 256
+		self.batch_size = 32
 		self.num_epochs = 50
 		# how often to save the model during training
 		self.save_epoch = 2
@@ -44,10 +44,12 @@ class Parameters():
 		self.data_path = './data/TrainSamples/'
 		# self.data_path = r'D:\Datasets\Pystack\NoLimitTexasHoldem'
 		# the number of iterations that DeepStack runs CFR for
-		self.cfr_iters = 800
+		#self.cfr_iters = 800
+		self.cfr_iters = 1
 		# the number of preliminary CFR iterations which DeepStack doesn't
 		# factor into the average strategy (included in cfr_iters)
-		self.cfr_skip_iters = 500
+		#self.cfr_skip_iters = 500
+		self.cfr_skip_iters = 0
 		# the number of starting iters used on approximating leaf nodes
 		# after these iterations next street's root nodes are approximated and averaged
 		# no need for 'river', because you get values from leaf nodes anyway (using terminal equity)
@@ -57,7 +59,7 @@ class Parameters():
 			'turn':200
 		}
 		# how many solved poker situations are generated
-		self.gen_different_boards = 2
+		self.gen_different_boards = 10
 		# how many poker situations are solved simultaneously during
 		# data generation
 		self.gen_batch_size = 100

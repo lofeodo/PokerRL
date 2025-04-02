@@ -32,24 +32,24 @@ subprocess.run([
 ], env=env)
 
 # Convert sample to TFRecords
-print(f"=== Converting data to TFRecords ===")
-subprocess.run([
-    'python',
-    os.path.join(base_dir, 'scripts', 'convert_npy_to_tfrecords.py'),
-    '--street', str(street),
-    '--start-idx', str(starting_idx),
-    '--approximate', str(approximate)
-], env=env)
+# print(f"=== Converting data to TFRecords ===")
+# subprocess.run([
+#     'python',
+#     os.path.join(base_dir, 'scripts', 'convert_npy_to_tfrecords.py'),
+#     '--street', str(street),
+#     '--start-idx', str(starting_idx),
+#     '--approximate', str(approximate)
+# ], env=env)
 
-# Train with minimal epochs just to test
-print(f"=== Training ===")
-subprocess.run([
-    'python', 
-    os.path.join(base_dir, 'scripts', 'train_nn.py'),
-    '--street', str(street),
-    '--start-idx', str(starting_idx),
-    '--approximate', str(approximate),
-    '--epochs', f'{arguments.num_epochs}'
-], env=env)
+# # Train with minimal epochs just to test
+# print(f"=== Training ===")
+# subprocess.run([
+#     'python', 
+#     os.path.join(base_dir, 'scripts', 'train_nn.py'),
+#     '--street', str(street),
+#     '--start-idx', str(starting_idx),
+#     '--approximate', str(approximate),
+#     '--epochs', f'{arguments.num_epochs}'
+# ], env=env)
 
 print(f"Completed {street_name}")
