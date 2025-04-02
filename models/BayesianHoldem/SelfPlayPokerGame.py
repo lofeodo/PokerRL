@@ -15,11 +15,6 @@ class SelfPlayPokerGame():
         min_bet = 0.5*big_blind
         player_count = 2
 
-        if player0_stack is None:
-            player0_stack = 100*big_blind
-        if player1_stack is None:
-            player1_stack = 100*big_blind
-
         game = pk.NoLimitTexasHoldem(
             # Automations - everything is automatic except for player actions
             (
