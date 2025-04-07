@@ -2,6 +2,9 @@ import torch
 from torch import nn
 from torch.nn import Linear, Conv2d
 import torch.nn.functional as F
+from typing import Tuple
+import torch.optim as optim
+
 class CNN_A(nn.Module):
     def __init__(self) -> None:
         super(CNN_A, self).__init__()
@@ -72,11 +75,12 @@ class BayesianHoldem(nn.Module):
     2: Bet/Raise (BB)
     3: All-in
     """
-    def __init__(self) -> None:
+    def __init__(self, learning_rate: float = 0.001) -> None:
         super(BayesianHoldem, self).__init__()
         self.cnn_a = CNN_A()
         self.cnn_c = CNN_C()
         self.mlp = MLP()
+        self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, action_representation: torch.Tensor, card_representation: torch.Tensor) -> torch.Tensor:
         """ 
@@ -327,4 +331,80 @@ class BayesianHoldem(nn.Module):
             )
         
         return target_action, torch.tensor(target_value, dtype=torch.float32)
+
+    def train_step(self,
+                  action_representation: torch.Tensor,
+                  card_representation: torch.Tensor,
+                  target_action: torch.Tensor,
+                  target_value: torch.Tensor,
+                  pot_size: float,
+                  stack_size: float,
+                  bet_size: float,
+                  max_stack: int = 20000,
+                  discount_factor: float = 0.95,
+                  policy_weight: float = 1.0,
+                  value_weight: float = 0.5) -> Tuple[float, float, float]:
+        """
+        Perform a single training step.
+        
+        Args:
+            action_representation: torch.Tensor, shape: (24, 4, 4)
+            card_representation: torch.Tensor, shape: (6, 13, 4)
+            target_action: torch.Tensor, shape: (4,), one-hot encoded target action
+            target_value: torch.Tensor, shape: (1,), target state value
+            pot_size: float, current size of the pot
+            stack_size: float, current stack size
+            bet_size: float, current bet size
+            optimizer: torch.optim.Optimizer, optimizer to use for training
+            max_stack: int, maximum possible stack size
+            discount_factor: float, discount factor for future rewards
+            policy_weight: float, weight for policy loss
+            value_weight: float, weight for value loss
+            
+        Returns:
+            Tuple[float, float, float]: Total loss, policy loss, and value loss
+        """
+        # Zero gradients
+        self.optimizer.zero_grad()
+        
+        # Forward pass
+        output = self.forward(action_representation, card_representation)
+        
+        # Compute loss
+        total_loss = self.compute_loss(
+            output=output,
+            target_action=target_action,
+            target_value=target_value,
+            pot_size=pot_size,
+            stack_size=stack_size,
+            bet_size=bet_size,
+            max_stack=max_stack,
+            discount_factor=discount_factor,
+            policy_weight=policy_weight,
+            value_weight=value_weight
+        )
+        
+        # Backward pass
+        total_loss.backward()
+        
+        # Clip gradients to prevent exploding gradients
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+        
+        # Update weights
+        self.optimizer.step()
+        
+        # Get individual losses for logging
+        with torch.no_grad():
+            policy_loss = F.cross_entropy(output, target_action)
+            predicted_value = self.value_function(
+                output=output,
+                pot_size=pot_size,
+                stack_size=stack_size,
+                bet_size=bet_size,
+                max_stack=max_stack,
+                discount_factor=discount_factor
+            )
+            value_loss = F.mse_loss(torch.tensor(predicted_value, dtype=torch.float32), target_value)
+        
+        return total_loss.item(), policy_loss.item(), value_loss.item()
 

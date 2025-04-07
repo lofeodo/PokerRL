@@ -19,9 +19,6 @@ class SelfPlayPokerGame():
         
         self.BB = 100
         
-        # Initialize optimizer only for Player0
-        self.optimizer0 = optim.Adam(self.Player0.parameters(), lr=learning_rate)
-        
         # Training metrics
         self.episode_rewards = []
         self.episode_losses = []
@@ -211,8 +208,7 @@ class SelfPlayPokerGame():
             target_value=target_value,
             pot_size=pot_size,
             stack_size=stack_size,
-            bet_size=bet_size,
-            optimizer=self.optimizer0
+            bet_size=bet_size
         )
 
     # ==================================================
@@ -368,7 +364,6 @@ class SelfPlayPokerGame():
         """Save model checkpoints and training statistics."""
         checkpoint = {
             'player0_state': self.Player0.state_dict(),
-            'optimizer0_state': self.optimizer0.state_dict(),
             'game_idx': game_idx,
             'stats': stats,
             'best_win_rate': self.best_win_rate
