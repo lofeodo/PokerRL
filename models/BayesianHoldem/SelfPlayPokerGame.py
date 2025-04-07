@@ -76,7 +76,7 @@ class SelfPlayPokerGame():
         pre_state = {
             'bets': self.state.bets.copy(),
             'stacks': self.state.stacks.copy(),
-            'pot_size': self.state.pot_size,
+            'pot_size': tuple(self.state.pot_amounts)[0] if len(tuple(self.state.pot_amounts)) > 0 else 0,
             'street_index': self.state.street_index,
             'board_cards': self.state.board_cards.copy() if self.state.board_cards else None
         }
@@ -148,7 +148,7 @@ class SelfPlayPokerGame():
         post_state = {
             'bets': self.state.bets.copy(),
             'stacks': self.state.stacks.copy(),
-            'pot_size': self.state.pot_size,
+            'pot_size': tuple(self.state.pot_amounts)[0] if len(tuple(self.state.pot_amounts)) > 0 else 0,
             'street_index': self.state.street_index,
             'board_cards': self.state.board_cards.copy() if self.state.board_cards else None
         }
@@ -190,7 +190,7 @@ class SelfPlayPokerGame():
             return 0.0, 0.0, 0.0
             
         # Get current game state information
-        pot_size = float(self.state.pot_size)
+        pot_size = float(tuple(self.state.pot_amounts)[0]) if len(tuple(self.state.pot_amounts)) > 0 else 0
         stack_size = float(self.state.stacks[player_id])
         bet_size = float(self.BB)
         
