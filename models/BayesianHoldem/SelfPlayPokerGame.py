@@ -309,7 +309,7 @@ class SelfPlayPokerGame():
             'value_losses': []
         }
 
-        best_model_path = f"{save_path}_best.pt"
+        best_model_path = f"{save_path}/best.pt"
         self.set_models_to_previous_best(best_model_path)
         
         for game_idx in range(num_games):
@@ -380,6 +380,6 @@ class SelfPlayPokerGame():
             'best_win_rate': self.best_win_rate
         }
         
-        torch.save(checkpoint, f"{save_path}_game_{game_idx}.pt")
+        torch.save(checkpoint, f"{save_path}/game_{game_idx}.pt")
 
 # ==================================================
