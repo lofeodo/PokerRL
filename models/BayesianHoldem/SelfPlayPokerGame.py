@@ -349,12 +349,6 @@ class SelfPlayPokerGame():
             total_games = training_stats['player0_wins'] + training_stats['player1_wins']
             current_win_rate = training_stats['player0_wins'] / max(1, total_games)
             
-            # Save best model if win rate improved
-            if current_win_rate > self.best_win_rate and save_path:
-                self.best_win_rate = current_win_rate
-                torch.save(self.Player0.state_dict(), best_model_path)
-                print(f"\nNew best model saved with win rate: {current_win_rate:.2%}")
-            
             # Save checkpoints periodically
             if save_path and (game_idx + 1) % save_interval == 0:
                 self._save_checkpoint(save_path, game_idx + 1, training_stats)
@@ -418,6 +412,8 @@ class SelfPlayPokerGame():
         if save_path:
             os.makedirs(save_path, exist_ok=True)
         
+        best_win_rate = 0.0  # Track the best win rate across all sessions
+        
         for session in range(num_sessions):
             session_start_time = time.time()
             print(f"\n========= Starting Training Session {session + 1}/{num_sessions} =========")
@@ -472,12 +468,18 @@ class SelfPlayPokerGame():
                     os.path.join(plot_path, f'session_{session + 1}'),
                     show=False
                 )
+            
+            # Save the model if the current session's win rate is better than the best win rate
+            if session_win_rate > best_win_rate and save_path:
+                best_win_rate = session_win_rate
+                torch.save(self.Player0.state_dict(), os.path.join(save_path, 'best_model.pt'))
+                print(f"\nNew best model saved with win rate: {best_win_rate:.2%}")
         
         # Print final training summary
         print("\n========= Training Complete =========")
         print(f"Total Sessions: {num_sessions}")
         print(f"Total Games: {sum(self.session_metrics['session_game_counts'])}")
-        print(f"Best Win Rate: {max(self.session_metrics['session_win_rates']):.2%}")
+        print(f"Best Win Rate: {best_win_rate:.2%}")
         print(f"Average Session Time: {sum(self.session_metrics['session_timestamps'])/num_sessions:.2f} seconds")
         
         return self.session_metrics
