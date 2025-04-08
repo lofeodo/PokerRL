@@ -10,7 +10,7 @@ class Utilities:
         Plot various training statistics including win rates and losses.
         
         Args:
-            stats: Dictionary containing training statistics from run_training_session
+            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
             save_path: Optional path to save the plots
             show: Whether to display the plots
         """
@@ -18,45 +18,43 @@ class Utilities:
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
         fig.suptitle('Training Statistics', fontsize=16)
         
-        # Plot win rate over time
-        total_games = np.arange(1, len(stats['total_losses']) + 1)
-        win_rates = [stats['player0_wins'] / (stats['player0_wins'] + stats['player1_wins'])] * len(total_games)
-        
-        axes[0, 0].plot(total_games, win_rates, label='Win Rate')
-        axes[0, 0].set_title('Win Rate Over Time')
-        axes[0, 0].set_xlabel('Game Number')
+        # Plot win rate over sessions
+        sessions = np.arange(1, len(stats['session_win_rates']) + 1)
+        axes[0, 0].plot(sessions, stats['session_win_rates'], label='Win Rate')
+        axes[0, 0].set_title('Win Rate Over Sessions')
+        axes[0, 0].set_xlabel('Session Number')
         axes[0, 0].set_ylabel('Win Rate')
         axes[0, 0].grid(True)
         axes[0, 0].legend()
         
-        # Plot total losses
-        axes[0, 1].plot(total_games, stats['total_losses'], label='Total Loss')
-        axes[0, 1].set_title('Total Loss Over Time')
-        axes[0, 1].set_xlabel('Game Number')
+        # Plot total losses over sessions
+        axes[0, 1].plot(sessions, stats['session_total_losses'], label='Total Loss')
+        axes[0, 1].set_title('Total Loss Over Sessions')
+        axes[0, 1].set_xlabel('Session Number')
         axes[0, 1].set_ylabel('Loss')
         axes[0, 1].grid(True)
         axes[0, 1].legend()
         
-        # Plot policy and value losses
-        axes[1, 0].plot(total_games, stats['policy_losses'], label='Policy Loss')
-        axes[1, 0].plot(total_games, stats['value_losses'], label='Value Loss')
-        axes[1, 0].set_title('Policy and Value Losses Over Time')
-        axes[1, 0].set_xlabel('Game Number')
+        # Plot policy and value losses over sessions
+        axes[1, 0].plot(sessions, stats['session_policy_losses'], label='Policy Loss')
+        axes[1, 0].plot(sessions, stats['session_value_losses'], label='Value Loss')
+        axes[1, 0].set_title('Policy and Value Losses Over Sessions')
+        axes[1, 0].set_xlabel('Session Number')
         axes[1, 0].set_ylabel('Loss')
         axes[1, 0].grid(True)
         axes[1, 0].legend()
         
         # Plot moving averages of losses
-        window_size = 50
-        total_loss_ma = np.convolve(stats['total_losses'], np.ones(window_size)/window_size, mode='valid')
-        policy_loss_ma = np.convolve(stats['policy_losses'], np.ones(window_size)/window_size, mode='valid')
-        value_loss_ma = np.convolve(stats['value_losses'], np.ones(window_size)/window_size, mode='valid')
+        window_size = min(5, len(sessions))  # Use smaller window for sessions
+        total_loss_ma = np.convolve(stats['session_total_losses'], np.ones(window_size)/window_size, mode='valid')
+        policy_loss_ma = np.convolve(stats['session_policy_losses'], np.ones(window_size)/window_size, mode='valid')
+        value_loss_ma = np.convolve(stats['session_value_losses'], np.ones(window_size)/window_size, mode='valid')
         
-        axes[1, 1].plot(total_games[window_size-1:], total_loss_ma, label='Total Loss MA')
-        axes[1, 1].plot(total_games[window_size-1:], policy_loss_ma, label='Policy Loss MA')
-        axes[1, 1].plot(total_games[window_size-1:], value_loss_ma, label='Value Loss MA')
-        axes[1, 1].set_title('Moving Averages of Losses (Window Size = 50)')
-        axes[1, 1].set_xlabel('Game Number')
+        axes[1, 1].plot(sessions[window_size-1:], total_loss_ma, label='Total Loss MA')
+        axes[1, 1].plot(sessions[window_size-1:], policy_loss_ma, label='Policy Loss MA')
+        axes[1, 1].plot(sessions[window_size-1:], value_loss_ma, label='Value Loss MA')
+        axes[1, 1].set_title(f'Moving Averages of Losses (Window Size = {window_size})')
+        axes[1, 1].set_xlabel('Session Number')
         axes[1, 1].set_ylabel('Loss')
         axes[1, 1].grid(True)
         axes[1, 1].legend()
@@ -81,20 +79,24 @@ class Utilities:
         Plot the distribution of wins between players.
         
         Args:
-            stats: Dictionary containing training statistics from run_training_session
+            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
             save_path: Optional path to save the plot
             show: Whether to display the plot
         """
         plt.figure(figsize=(8, 6))
         
+        # Calculate total wins for each player
+        total_player0_wins = sum(stats['session_win_counts'])
+        total_player1_wins = sum(stats['session_game_counts']) - total_player0_wins
+        
         # Create pie chart
         labels = ['Player 0', 'Player 1']
-        sizes = [stats['player0_wins'], stats['player1_wins']]
+        sizes = [total_player0_wins, total_player1_wins]
         colors = ['lightblue', 'lightcoral']
         
         plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
         plt.axis('equal')
-        plt.title('Win Distribution')
+        plt.title('Overall Win Distribution')
         
         # Save plot if path is provided
         if save_path:
@@ -113,18 +115,21 @@ class Utilities:
         Plot the distribution of losses.
         
         Args:
-            stats: Dictionary containing training statistics from run_training_session
+            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
             save_path: Optional path to save the plot
             show: Whether to display the plot
         """
         plt.figure(figsize=(10, 6))
         
         # Create histogram of losses
-        plt.hist(stats['total_losses'], bins=50, alpha=0.7, label='Total Loss')
-        plt.hist(stats['policy_losses'], bins=50, alpha=0.7, label='Policy Loss')
-        plt.hist(stats['value_losses'], bins=50, alpha=0.7, label='Value Loss')
+        plt.hist(stats['session_total_losses'], bins=min(20, len(stats['session_total_losses'])), 
+                alpha=0.7, label='Total Loss')
+        plt.hist(stats['session_policy_losses'], bins=min(20, len(stats['session_policy_losses'])), 
+                alpha=0.7, label='Policy Loss')
+        plt.hist(stats['session_value_losses'], bins=min(20, len(stats['session_value_losses'])), 
+                alpha=0.7, label='Value Loss')
         
-        plt.title('Distribution of Losses')
+        plt.title('Distribution of Session Losses')
         plt.xlabel('Loss Value')
         plt.ylabel('Frequency')
         plt.legend()
@@ -147,7 +152,7 @@ class Utilities:
         Plot all available statistics and save them to the specified directory.
         
         Args:
-            stats: Dictionary containing training statistics from run_training_session
+            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
             save_dir: Optional directory to save the plots
             show: Whether to display the plots
         """
