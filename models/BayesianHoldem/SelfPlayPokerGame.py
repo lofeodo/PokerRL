@@ -1,3 +1,5 @@
+from utilities import Utilities
+import time
 import pokerkit as pk
 from BayesianHoldem import BayesianHoldem
 import torch
@@ -25,6 +27,17 @@ class SelfPlayPokerGame():
         self.episode_losses = []
         self.best_win_rate = 0.0
         self.best_model_path = best_model_path
+        
+        # Session tracking metrics
+        self.session_metrics = {
+            'session_win_rates': [],  # Win rate per session
+            'session_total_losses': [],  # Average total loss per session
+            'session_policy_losses': [],  # Average policy loss per session
+            'session_value_losses': [],  # Average value loss per session
+            'session_win_counts': [],  # Number of wins per session
+            'session_game_counts': [],  # Number of games per session
+            'session_timestamps': []  # Timestamps for each session
+        }
 
     # ==================================================
 
@@ -381,5 +394,92 @@ class SelfPlayPokerGame():
         }
         
         torch.save(checkpoint, f"{save_path}/game_{game_idx}.pt")
+
+    def train(self,
+             num_sessions: int = 10,
+             games_per_session: int = 1000,
+             save_path: Optional[str] = None,
+             plot_path: Optional[str] = None,
+             verbose: bool = False) -> Dict:
+        """
+        Train the model over multiple sessions.
+        
+        Args:
+            num_sessions: Number of training sessions to run
+            games_per_session: Number of games per training session
+            save_path: Directory to save models and checkpoints
+            plot_path: Directory to save training plots
+            verbose: Whether to print progress information
+            
+        Returns:
+            Dict containing training statistics across all sessions
+        """
+        
+        if save_path:
+            os.makedirs(save_path, exist_ok=True)
+        
+        for session in range(num_sessions):
+            session_start_time = time.time()
+            print(f"\n========= Starting Training Session {session + 1}/{num_sessions} =========")
+            
+            # Run training session
+            session_stats = self.run_training_session(
+                num_games=games_per_session,
+                verbose=verbose,
+                save_interval=games_per_session // 10,  # Save 10 checkpoints per session
+                save_path=save_path
+            )
+            
+            # Update session metrics
+            total_games = session_stats['player0_wins'] + session_stats['player1_wins']
+            session_win_rate = session_stats['player0_wins'] / max(1, total_games)
+            
+            self.session_metrics['session_win_rates'].append(session_win_rate)
+            self.session_metrics['session_win_counts'].append(session_stats['player0_wins'])
+            self.session_metrics['session_game_counts'].append(total_games)
+            self.session_metrics['session_timestamps'].append(time.time() - session_start_time)
+            
+            # Calculate average losses for the session
+            if session_stats['total_losses']:
+                self.session_metrics['session_total_losses'].append(
+                    sum(session_stats['total_losses']) / len(session_stats['total_losses'])
+                )
+                self.session_metrics['session_policy_losses'].append(
+                    sum(session_stats['policy_losses']) / len(session_stats['policy_losses'])
+                )
+                self.session_metrics['session_value_losses'].append(
+                    sum(session_stats['value_losses']) / len(session_stats['value_losses'])
+                )
+            
+            # Print session summary
+            print(f"\nSession {session + 1} Summary:")
+            print(f"Win Rate: {session_win_rate:.2%}")
+            print(f"Games Played: {total_games}")
+            print(f"Time Taken: {self.session_metrics['session_timestamps'][-1]:.2f} seconds")
+            if self.session_metrics['session_total_losses']:
+                print(f"Average Total Loss: {self.session_metrics['session_total_losses'][-1]:.4f}")
+            
+            # Save session metrics
+            if save_path:
+                metrics_path = os.path.join(save_path, f'session_{session + 1}_metrics.pt')
+                torch.save(self.session_metrics, metrics_path)
+            
+            # Plot training progress
+            if plot_path:
+                os.makedirs(plot_path, exist_ok=True)
+                Utilities.plot_all_stats(
+                    self.session_metrics,
+                    os.path.join(plot_path, f'session_{session + 1}'),
+                    show=False
+                )
+        
+        # Print final training summary
+        print("\n========= Training Complete =========")
+        print(f"Total Sessions: {num_sessions}")
+        print(f"Total Games: {sum(self.session_metrics['session_game_counts'])}")
+        print(f"Best Win Rate: {max(self.session_metrics['session_win_rates']):.2%}")
+        print(f"Average Session Time: {sum(self.session_metrics['session_timestamps'])/num_sessions:.2f} seconds")
+        
+        return self.session_metrics
 
 # ==================================================
