@@ -293,6 +293,7 @@ class BayesianHoldem(nn.Module):
                              pot_size: float,
                              stack_size: float,
                              bet_size: float,
+                             actual_return: float,
                              max_stack: int = 20000,
                              epsilon: float = 0.1,
                              use_expert: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
@@ -345,14 +346,7 @@ class BayesianHoldem(nn.Module):
                 max_stack=max_stack
             )
         else:
-            # Use Monte Carlo returns or value iteration
-            target_value = self.value_function(
-                output=output,
-                pot_size=pot_size,
-                stack_size=stack_size,
-                bet_size=bet_size,
-                max_stack=max_stack
-            )
+            target_value = actual_return
         
         return target_action, torch.tensor(target_value, dtype=torch.float32)
 
@@ -362,6 +356,7 @@ class BayesianHoldem(nn.Module):
                   pot_size: float,
                   stack_size: float,
                   bet_size: float,
+                  actual_return: float,
                   max_stack: int = 20000,
                   discount_factor: float = 0.95,
                   policy_weight: float = 1.0,
@@ -375,7 +370,7 @@ class BayesianHoldem(nn.Module):
             pot_size: float, current size of the pot
             stack_size: float, current stack size
             bet_size: float, current bet size
-            optimizer: torch.optim.Optimizer, optimizer to use for training
+            actual_return: float, the actual return (or bootstrapped return) for this state
             max_stack: int, maximum possible stack size
             discount_factor: float, discount factor for future rewards
             policy_weight: float, weight for policy loss
@@ -387,6 +382,7 @@ class BayesianHoldem(nn.Module):
         target_action, target_value = self.get_training_targets(
             action_representation=action_representation,
             card_representation=card_representation,
+            actual_return=actual_return,
             pot_size=pot_size,
             stack_size=stack_size,
             bet_size=bet_size
@@ -398,6 +394,16 @@ class BayesianHoldem(nn.Module):
         # Forward pass
         output = self.forward(action_representation, card_representation)
         
+        # Compute predicted value using current model
+        predicted_value = self.value_function(
+            output=output,
+            pot_size=pot_size,
+            stack_size=stack_size,
+            bet_size=bet_size,
+            max_stack=max_stack,
+            discount_factor=discount_factor
+        )
+                
         # Compute loss
         total_loss = self.compute_loss(
             output=output,
@@ -424,14 +430,6 @@ class BayesianHoldem(nn.Module):
         # Get individual losses for logging
         with torch.no_grad():
             policy_loss = F.cross_entropy(output, target_action)
-            predicted_value = self.value_function(
-                output=output,
-                pot_size=pot_size,
-                stack_size=stack_size,
-                bet_size=bet_size,
-                max_stack=max_stack,
-                discount_factor=discount_factor
-            )
             value_loss = F.mse_loss(torch.tensor(predicted_value, dtype=torch.float32), target_value)
         
         return total_loss.item(), policy_loss.item(), value_loss.item()

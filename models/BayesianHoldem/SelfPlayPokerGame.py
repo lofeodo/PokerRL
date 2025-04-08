@@ -180,22 +180,29 @@ class SelfPlayPokerGame():
     def _train_player(self, 
                      player_id: int, 
                      action_representation: torch.Tensor,
-                     card_representation: torch.Tensor) -> Tuple[float, float, float]:
+                     card_representation: torch.Tensor,
+                     transition: dict) -> Tuple[float, float, float]:
         """Train Player0 based on their action and the current game state."""
         if player_id != 0:  # Only train Player0
             return 0.0, 0.0, 0.0
             
-        # Get current game state information
         pot_size = float(tuple(self.state.pot_amounts)[0]) if len(tuple(self.state.pot_amounts)) > 0 else 0
         stack_size = float(self.state.stacks[player_id])
         bet_size = float(self.BB)
+        
+        if transition['is_terminal']:
+            actual_return = transition['post_state']['stacks'][player_id] - transition['pre_state']['stacks'][player_id]
+        else:
+            immediate_reward = transition['state_changes']['stack_delta']
+            actual_return = immediate_reward
         
         return self.Player0.train_step(
             action_representation=action_representation,
             card_representation=card_representation,
             pot_size=pot_size,
             stack_size=stack_size,
-            bet_size=bet_size
+            bet_size=bet_size,
+            actual_return=actual_return
         )
 
     # ==================================================
@@ -237,7 +244,8 @@ class SelfPlayPokerGame():
                 losses = self._train_player(
                     player_id,
                     action_representation,
-                    card_representation
+                    card_representation,
+                    transition  # Pass the transition information
                 )
                 
                 # Record metrics
