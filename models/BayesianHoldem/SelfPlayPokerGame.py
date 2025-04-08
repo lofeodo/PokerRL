@@ -192,21 +192,9 @@ class SelfPlayPokerGame():
         stack_size = float(self.state.stacks[player_id])
         bet_size = float(self.BB)
         
-        # Get target action and value
-        target_action, target_value = self.Player0.get_training_targets(
-            action_representation=action_representation,
-            card_representation=card_representation,
-            pot_size=pot_size,
-            stack_size=stack_size,
-            bet_size=bet_size
-        )
-        
-        # Perform training step
         return self.Player0.train_step(
             action_representation=action_representation,
             card_representation=card_representation,
-            target_action=target_action,
-            target_value=target_value,
             pot_size=pot_size,
             stack_size=stack_size,
             bet_size=bet_size

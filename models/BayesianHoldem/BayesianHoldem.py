@@ -359,8 +359,6 @@ class BayesianHoldem(nn.Module):
     def train_step(self,
                   action_representation: torch.Tensor,
                   card_representation: torch.Tensor,
-                  target_action: torch.Tensor,
-                  target_value: torch.Tensor,
                   pot_size: float,
                   stack_size: float,
                   bet_size: float,
@@ -374,8 +372,6 @@ class BayesianHoldem(nn.Module):
         Args:
             action_representation: torch.Tensor, shape: (24, 4, 4)
             card_representation: torch.Tensor, shape: (6, 13, 4)
-            target_action: torch.Tensor, shape: (4,), one-hot encoded target action
-            target_value: torch.Tensor, shape: (1,), target state value
             pot_size: float, current size of the pot
             stack_size: float, current stack size
             bet_size: float, current bet size
@@ -388,6 +384,14 @@ class BayesianHoldem(nn.Module):
         Returns:
             Tuple[float, float, float]: Total loss, policy loss, and value loss
         """
+        target_action, target_value = self.get_training_targets(
+            action_representation=action_representation,
+            card_representation=card_representation,
+            pot_size=pot_size,
+            stack_size=stack_size,
+            bet_size=bet_size
+        )
+
         # Zero gradients
         self.optimizer.zero_grad()
         
