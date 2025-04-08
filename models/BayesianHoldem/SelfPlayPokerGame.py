@@ -4,6 +4,7 @@ import torch
 import torch.optim as optim
 from typing import List, Dict, Optional, Tuple
 import os
+#from InputRepresentations import InputRepresentations
 
 # ==================================================
 
@@ -227,14 +228,17 @@ class SelfPlayPokerGame():
                 print(f"Street index: {self.state.street_index}")
                 print(f"Public cards: {self.state.board_cards}")
                 print(f"Bets: P0: {self.state.bets[0]}, P1: {self.state.bets[1]}, Chips: P0: {self.state.stacks[0]}, P1: {self.state.stacks[1]}")
-
-            # Get state representations
-            action_representation = torch.randn(24, 4, 4)  # TODO: Replace with actual representation
-            card_representation = torch.randn(6, 13, 4)    # TODO: Replace with actual representation
             
             # Current player's turn
             player_id = self.state.actor_index
             player = self.Player0 if player_id == 0 else self.Player1
+
+            # Get state representations
+            # TODO: Replace with actual representation
+            # action_representation = InputRepresentations.get_action_representation(self.state, player_id)
+            action_representation = torch.randn(24, 4, 4)
+            # card_representation = InputRepresentations.get_card_representation(self.state, player_id)
+            card_representation = torch.randn(6, 13, 4)
             
             # Get action from player
             action = player.predict_action(action_representation, card_representation)
@@ -312,9 +316,13 @@ class SelfPlayPokerGame():
             'policy_losses': [],
             'value_losses': []
         }
+
+        best_model_path = f"{save_path}_best.pt"
+        self.set_models_to_previous_best(best_model_path)
         
         for game_idx in range(num_games):
             # Run a game and collect metrics
+            print(f"========= New game {game_idx + 1} =========")
             game_result = self.run_game(verbose=verbose, training=True)
             
             # Update statistics
@@ -339,7 +347,6 @@ class SelfPlayPokerGame():
             # Save best model if win rate improved
             if current_win_rate > self.best_win_rate and save_path:
                 self.best_win_rate = current_win_rate
-                best_model_path = f"{save_path}_best.pt"
                 torch.save(self.Player0.state_dict(), best_model_path)
                 print(f"\nNew best model saved with win rate: {current_win_rate:.2%}")
             
@@ -358,6 +365,18 @@ class SelfPlayPokerGame():
         
         return training_stats
 
+    # ==================================================
+
+    def set_models_to_previous_best(self, best_model_path: str, verbose: bool = False):
+        if os.path.exists(best_model_path):
+            self.Player0.load_state_dict(torch.load(best_model_path))
+            self.Player1.load_state_dict(torch.load(best_model_path))
+            if verbose:
+                print(f"Loaded best model from {best_model_path}")
+        else:
+            if verbose:
+                print(f"No best model found at {best_model_path}")
+    
     # ==================================================
 
     def _save_checkpoint(self, save_path: str, game_idx: int, stats: dict):
