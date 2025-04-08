@@ -180,9 +180,7 @@ class SelfPlayPokerGame():
     def _train_player(self, 
                      player_id: int, 
                      action_representation: torch.Tensor,
-                     card_representation: torch.Tensor,
-                     action: int,
-                     verbose: bool = False) -> Tuple[float, float, float]:
+                     card_representation: torch.Tensor) -> Tuple[float, float, float]:
         """Train Player0 based on their action and the current game state."""
         if player_id != 0:  # Only train Player0
             return 0.0, 0.0, 0.0
@@ -239,9 +237,7 @@ class SelfPlayPokerGame():
                 losses = self._train_player(
                     player_id,
                     action_representation,
-                    card_representation,
-                    action,
-                    verbose
+                    card_representation
                 )
                 
                 # Record metrics
