@@ -14,6 +14,14 @@ class CNN_A(nn.Module):
         self.cnn1 = Conv2d(in_channels=24, out_channels=128, kernel_size=k, stride=s, padding=p)
         self.cnn2 = Conv2d(in_channels=128, out_channels=256, kernel_size=k, stride=s, padding=p)
         self.cnn3 = Conv2d(in_channels=256, out_channels=256, kernel_size=k, stride=s, padding=p)
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        for param in self.parameters():
+            if param.dim() > 1:
+                nn.init.xavier_uniform_(param)
+            else:
+                nn.init.constant_(param, 0)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """ 
@@ -36,6 +44,14 @@ class CNN_C(nn.Module):
         self.cnn2 = Conv2d(in_channels=64, out_channels=128, kernel_size=k, stride=s, padding=p)
         self.cnn3 = Conv2d(in_channels=128, out_channels=256, kernel_size=k, stride=s, padding=p)
         self.cnn4 = Conv2d(in_channels=256, out_channels=256, kernel_size=k, stride=s, padding=p)
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        for param in self.parameters():
+            if param.dim() > 1:
+                nn.init.xavier_uniform_(param)
+            else:
+                nn.init.constant_(param, 0)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """ 
@@ -55,6 +71,14 @@ class MLP(nn.Module):
         self.input_dim = 256*(4*4 + 13*4)
         self.fc1 = Linear(in_features=self.input_dim, out_features=390)
         self.fc2 = Linear(in_features=390, out_features=4)
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        for param in self.parameters():
+            if param.dim() > 1:
+                nn.init.xavier_uniform_(param)
+            else:
+                nn.init.constant_(param, 0)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """ 
