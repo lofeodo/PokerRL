@@ -56,15 +56,61 @@ class GameRepresentations:
     def get_action_representations(state: pk.state.State) -> torch.Tensor:
         """
         Generate an action input tensor for the given player. Tensor dimensions are (24, 4, 4)
-        Channel 1 - 6: Actions for the first betting round
-        Channel 7 - 12: Actions for the second betting round
-        Channel 13 - 18: Actions for the third betting round
-        Channel 19 - 24: Actions for the fourth betting round
+        Channel 1 - 6: Actions for the preflop betting round
+        Channel 7 - 12: Actions for the flop betting round
+        Channel 13 - 18: Actions for the turn betting round
+        Channel 19 - 24: Actions for the river betting round
 
         Row 1: first player's action
         Row 2: second player's action
-        Row 3: sum of actions
+        Row 3: sum of player 0 and player 1 actions
         Row 4: legal actions allowed
         """
-        pass
+        action_tensor = torch.zeros((24, 4, 4), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
+
+        current_round = 0  # Track the current betting round
+        player_actions = [[], []]  # Store actions for player 0 and player 1
+
+        for idx, operation in enumerate(state.operations):
+            prev_operation = state.operations[idx - 1] if idx > 0 else None
+            if isinstance(prev_operation, (pk.state.HoleDealing, pk.state.BoardDealing)) and \
+                prev_operation is not None and \
+                not isinstance(operation, (pk.state.HoleDealing, pk.state.BoardDealing)):
+                if player_actions[0] and player_actions[1]:
+                    for idx in range(len(player_actions[0])):
+                        channel_index = (current_round - 1) * 6 + idx
+                        action_tensor[channel_index, 0, player_actions[0][idx]] = 1
+                        action_tensor[channel_index, 1, player_actions[1][idx]] = 1
+                        action_tensor[channel_index, 2] = action_tensor[channel_index, 0] + action_tensor[channel_index, 1]
+                        action_tensor[channel_index, 3] = GameRepresentations.get_legal_actions(state, idx)
+                        
+                current_round += 1  # Move to the next betting round
+                player_actions = [[], []]  # Reset player actions for the new round
+
+            if isinstance(operation, pk.state.Folding):
+                player_index = operation.player_index
+                player_actions[player_index].append(0)  # Mark as fold
+
+            elif isinstance(operation, pk.state.CheckingOrCalling):
+                player_index = operation.player_index
+                player_actions[player_index].append(1)  # Mark as check/call
+
+            elif isinstance(operation, pk.state.CompletionBettingOrRaisingTo):
+                player_index = operation.player_index
+                # Check if player has gone all in:
+                if state.stacks[player_index] == 0:
+                    player_actions[player_index].append(3)  # Mark as all-in
+                else:
+                    player_actions[player_index].append(2)  # Mark as raise
+
+        return action_tensor
+
+    @staticmethod
+    def get_legal_actions(state: pk.state.State, operation_idx: int) -> torch.Tensor:
+        """
+        Generate a legal actions tensor for the given player. Tensor dimensions are (1, 4)
+        """
+        legal_actions = torch.zeros((4, 4), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
+        operations = state.operations[:operation_idx]
+        return None
     
