@@ -57,7 +57,7 @@ class GameRepresentations:
         return card_tensor
 
     @staticmethod
-    def get_action_representations(state: pk.state.State, prev_action_tensor: torch.Tensor) -> torch.Tensor:
+    def get_action_representations(state: pk.state.State, prev_action_tensor: torch.Tensor, player_id: int) -> torch.Tensor:
         """
         This function is used to get the action representations for the given player. It should be called after each action is taken
         to update the action tensor and keep it up to date.
@@ -79,6 +79,7 @@ class GameRepresentations:
         start_idx, current_round = GameRepresentations.get_beginning_of_round_idx(state)
 
         player_actions = [[], []]  # Current action pair being processed
+        other_player_id = abs(1 - player_id)  # Determine the other player's ID
 
         # Iterate forward from start_idx to populate the tensor
         for idx in range(start_idx, len(state.operations)):
@@ -96,35 +97,41 @@ class GameRepresentations:
                     player_actions[operation.player_index].append(2)  # Raise
 
         channel_idx = current_round * 6
-        for idx, action in enumerate(player_actions[0]):
+        # Populate the action tensor for the specified player
+        for idx, action in enumerate(player_actions[player_id]):
             if idx >= 6:
                 break
-            action_tensor[channel_idx + idx, 0, action] = 1
+            action_tensor[channel_idx + idx, 0, action] = 1  # Player's actions in row 0
 
-        for idx, action in enumerate(player_actions[1]):
+        # Populate the action tensor for the other player
+        for idx, action in enumerate(player_actions[other_player_id]):
             if idx >= 6:
                 break
-            action_tensor[channel_idx + idx, 1, action] = 1
+            action_tensor[channel_idx + idx, 1, action] = 1  # Other player's actions in row 1
 
-        for idx in range(max(len(player_actions[0]), len(player_actions[1]))):
+        # Populate the sum of actions
+        for idx in range(max(len(player_actions[player_id]), len(player_actions[other_player_id]))):
             if idx >= 6:
                 break
             action_tensor[channel_idx + idx, 2] = action_tensor[channel_idx + idx, 0] + action_tensor[channel_idx + idx, 1]
 
-        if len(player_actions[0]) <= 6 and len(player_actions[0]) > 0:
-            action_tensor[channel_idx + len(player_actions[0]) - 1, 3] = GameRepresentations.get_legal_actions(state)
+        # Populate legal actions if applicable
+        if len(player_actions[player_id]) <= 6 and len(player_actions[player_id]) > 0:
+            action_tensor[channel_idx + len(player_actions[player_id]) - 1, 3] = GameRepresentations.get_legal_actions(state, player_id)
 
         return action_tensor
 
     @staticmethod
-    def get_legal_actions(state: pk.state.State) -> torch.Tensor:
+    def get_legal_actions(state: pk.state.State, player_id: int) -> torch.Tensor:
         """
         Generate a legal actions tensor for the given player. Tensor dimensions are (1, 4)
         """
         legal_actions = torch.zeros((1, 4), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
 
-        last_p0_action = None
-        last_p1_action = None
+        last_player_action = None
+        last_other_player_action = None
+        other_player_id = abs(1 - player_id)  # Determine the other player's ID
+
         for idx in range(len(state.operations) - 1, -1, -1):
             operation = state.operations[idx]
             if isinstance(operation, pk.state.BoardDealing):
@@ -135,21 +142,22 @@ class GameRepresentations:
             elif isinstance(operation, pk.state.HoleDealing):
                 break
             elif isinstance(operation, (pk.state.CheckingOrCalling, pk.state.CompletionBettingOrRaisingTo, pk.state.Folding)):
-                if operation.player_index == 0:
-                    last_p0_action = operation
+                if operation.player_index == player_id:
+                    last_player_action = operation
                 else:
-                    last_p1_action = operation
+                    last_other_player_action = operation
 
-        if isinstance(last_p0_action, pk.state.Folding) or isinstance(last_p1_action, pk.state.Folding):
-            return legal_actions # no available actions if player has folded
-        
+        # If the player has folded, no available actions
+        if isinstance(last_player_action, pk.state.Folding) or isinstance(last_other_player_action, pk.state.Folding):
+            return legal_actions  # No available actions if player has folded
+
         # No action has been played this round.
-        if last_p0_action is None and last_p1_action is None:
+        if last_player_action is None and last_other_player_action is None:
             return torch.Tensor([[0, 1, 1, 1]])
 
         # Check if the player can fold
-        if last_p1_action is not None and \
-            not isinstance(last_p1_action, (pk.state.CheckingOrCalling, pk.state.HoleDealing, pk.state.BoardDealing)):
+        if last_other_player_action is not None and \
+            not isinstance(last_other_player_action, (pk.state.CheckingOrCalling, pk.state.HoleDealing, pk.state.BoardDealing)):
             legal_actions[0, 0] = 1
 
         # Check/call is always legal
@@ -157,11 +165,11 @@ class GameRepresentations:
 
         # Check if the player can bet/raise
         bb = tuple(state.blinds_or_straddles)[1]
-        if bb <= state.stacks[0] and bb <= state.stacks[1]:
+        if bb <= state.stacks[player_id] and bb <= state.stacks[other_player_id]:
             legal_actions[0, 2] = 1
 
         # Check if player can go all-in
-        if state.stacks[0] != 0:
+        if state.stacks[player_id] != 0:
             legal_actions[0, 3] = 1
 
         return legal_actions
