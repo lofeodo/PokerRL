@@ -2,6 +2,10 @@ import torch
 import pokerkit as pk
 
 class GameRepresentations:
+    """
+    This class is used to obtain card and action representations
+    """
+
     @staticmethod
     def get_card_representations(state: pk.state.State, player_id: int) -> torch.Tensor:
         """
@@ -53,64 +57,128 @@ class GameRepresentations:
         return card_tensor
 
     @staticmethod
-    def get_action_representations(state: pk.state.State) -> torch.Tensor:
+    def get_action_representations(state: pk.state.State, prev_action_tensor: torch.Tensor) -> torch.Tensor:
         """
+        This function is used to get the action representations for the given player. It should be called after each action is taken
+        to update the action tensor and keep it up to date.
+
         Generate an action input tensor for the given player. Tensor dimensions are (24, 4, 4)
-        Channel 1 - 6: Actions for the preflop betting round
-        Channel 7 - 12: Actions for the flop betting round
-        Channel 13 - 18: Actions for the turn betting round
-        Channel 19 - 24: Actions for the river betting round
+        Channel 0 - 5: Actions for the preflop betting round
+        Channel 6 - 11: Actions for the flop betting round
+        Channel 12 - 17: Actions for the turn betting round
+        Channel 18 - 23: Actions for the river betting round
 
         Row 1: first player's action
         Row 2: second player's action
         Row 3: sum of player 0 and player 1 actions
-        Row 4: legal actions allowed
-        """
-        action_tensor = torch.zeros((24, 4, 4), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
+        Row 4: legal actions allowed at the time of the action
+        """        
+        action_tensor = prev_action_tensor
 
-        current_round = 0  # Track the current betting round
-        player_actions = [[], []]  # Store actions for player 0 and player 1
+        # Get the index of the operation that starts the current round
+        start_idx, current_round = GameRepresentations.get_beginning_of_round_idx(state)
 
-        for idx, operation in enumerate(state.operations):
-            prev_operation = state.operations[idx - 1] if idx > 0 else None
-            if isinstance(prev_operation, (pk.state.HoleDealing, pk.state.BoardDealing)) and \
-                prev_operation is not None and \
-                not isinstance(operation, (pk.state.HoleDealing, pk.state.BoardDealing)):
-                if player_actions[0] and player_actions[1]:
-                    for idx in range(len(player_actions[0])):
-                        channel_index = (current_round - 1) * 6 + idx
-                        action_tensor[channel_index, 0, player_actions[0][idx]] = 1
-                        action_tensor[channel_index, 1, player_actions[1][idx]] = 1
-                        action_tensor[channel_index, 2] = action_tensor[channel_index, 0] + action_tensor[channel_index, 1]
-                        action_tensor[channel_index, 3] = GameRepresentations.get_legal_actions(state, idx)
-                        
-                current_round += 1  # Move to the next betting round
-                player_actions = [[], []]  # Reset player actions for the new round
+        player_actions = [[], []]  # Current action pair being processed
 
+        # Iterate forward from start_idx to populate the tensor
+        for idx in range(start_idx, len(state.operations)):
+            operation = state.operations[idx]
+
+            # Record the action
             if isinstance(operation, pk.state.Folding):
-                player_index = operation.player_index
-                player_actions[player_index].append(0)  # Mark as fold
-
+                player_actions[operation.player_index].append(0)
             elif isinstance(operation, pk.state.CheckingOrCalling):
-                player_index = operation.player_index
-                player_actions[player_index].append(1)  # Mark as check/call
-
+                player_actions[operation.player_index].append(1)
             elif isinstance(operation, pk.state.CompletionBettingOrRaisingTo):
-                player_index = operation.player_index
-                # Check if player has gone all in:
-                if state.stacks[player_index] == 0:
-                    player_actions[player_index].append(3)  # Mark as all-in
+                if state.stacks[operation.player_index] == 0:
+                    player_actions[operation.player_index].append(3)  # All-in
                 else:
-                    player_actions[player_index].append(2)  # Mark as raise
+                    player_actions[operation.player_index].append(2)  # Raise
+
+        channel_idx = current_round * 6
+        for idx, action in enumerate(player_actions[0]):
+            if idx >= 6:
+                break
+            action_tensor[channel_idx + idx, 0, action] = 1
+
+        for idx, action in enumerate(player_actions[1]):
+            if idx >= 6:
+                break
+            action_tensor[channel_idx + idx, 1, action] = 1
+
+        for idx in range(max(len(player_actions[0]), len(player_actions[1]))):
+            if idx >= 6:
+                break
+            action_tensor[channel_idx + idx, 2] = action_tensor[channel_idx + idx, 0] + action_tensor[channel_idx + idx, 1]
+
+        if len(player_actions[0]) <= 6 and len(player_actions[0]) > 0:
+            action_tensor[channel_idx + len(player_actions[0]) - 1, 3] = GameRepresentations.get_legal_actions(state)
 
         return action_tensor
 
     @staticmethod
-    def get_legal_actions(state: pk.state.State, operation_idx: int) -> torch.Tensor:
+    def get_legal_actions(state: pk.state.State) -> torch.Tensor:
         """
         Generate a legal actions tensor for the given player. Tensor dimensions are (1, 4)
         """
-        legal_actions = torch.zeros((4, 4), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
-        operations = state.operations[:operation_idx]
-        return None
+        legal_actions = torch.zeros((1, 4), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
+
+        last_p0_action = None
+        last_p1_action = None
+        for idx in range(len(state.operations) - 1, -1, -1):
+            operation = state.operations[idx]
+            if isinstance(operation, pk.state.BoardDealing):
+                if idx == len(state.operations) - 1:
+                    continue
+                else:
+                    break
+            elif isinstance(operation, pk.state.HoleDealing):
+                break
+            elif isinstance(operation, (pk.state.CheckingOrCalling, pk.state.CompletionBettingOrRaisingTo, pk.state.Folding)):
+                if operation.player_index == 0:
+                    last_p0_action = operation
+                else:
+                    last_p1_action = operation
+
+        if isinstance(last_p0_action, pk.state.Folding) or isinstance(last_p1_action, pk.state.Folding):
+            return legal_actions # no available actions if player has folded
+        
+        # No action has been played this round.
+        if last_p0_action is None and last_p1_action is None:
+            return torch.Tensor([[0, 1, 1, 1]])
+
+        # Check if the player can fold
+        if last_p1_action is not None and \
+            not isinstance(last_p1_action, (pk.state.CheckingOrCalling, pk.state.HoleDealing, pk.state.BoardDealing)):
+            legal_actions[0, 0] = 1
+
+        # Check/call is always legal
+        legal_actions[0, 1] = 1
+
+        # Check if the player can bet/raise
+        bb = tuple(state.blinds_or_straddles)[1]
+        if bb <= state.stacks[0] and bb <= state.stacks[1]:
+            legal_actions[0, 2] = 1
+
+        # Check if player can go all-in
+        if state.stacks[0] != 0:
+            legal_actions[0, 3] = 1
+
+        return legal_actions
     
+    @staticmethod
+    def get_beginning_of_round_idx(state: pk.state.State) -> int:
+        """
+        Get the index of the operation that starts the current round.
+        """
+        current_round = state.street_index
+        for idx in range(len(state.operations) - 1, -1, -1):
+            operation = state.operations[idx]
+            
+            if isinstance(operation, pk.state.BoardDealing):
+                if idx == len(state.operations) - 1:  # If this is the most recent operation
+                    current_round -= 1  # We need to populate the previous round
+                    continue
+                return idx + 1, current_round  # Start from the operation after the dealing
+            
+        return 0, 0
