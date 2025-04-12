@@ -23,11 +23,14 @@ class GameRepresentations:
         # Initialize the tensor with zeros on the GPU
         card_tensor = torch.zeros((6, 4, 13), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
 
-        # Helper function to convert card representation to tensor indices
-        def card_to_tensor_indices(card: list[str]):
-            rank = int(card[:-1])  # Get the rank (e.g., '5' from '5d')
-            suit = {'c': 1, 'd': 2, 'h': 3, 's': 4}[card[-1]]  # Map suit to index
-            return suit - 1, rank - 1  # Convert to zero-based index
+        # Helper function to convert suit and rank to tensor indices
+        def card_to_tensor_indices(card):
+            suit_mapping = {'c': 1, 'd': 2, 'h': 3, 's': 4}
+            rank_mapping = {'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13}
+            
+            suit_idx = suit_mapping[card.suit] - 1  # Convert to zero-based index
+            rank_idx = rank_mapping[card.rank] - 1  # Convert to zero-based index
+            return suit_idx, rank_idx
 
         # Player's cards
         for card in state.hole_cards[player_id]:
@@ -40,9 +43,9 @@ class GameRepresentations:
                 card = card[0]  # Extract the card from the list
                 suit_idx, rank_idx = card_to_tensor_indices(card)
                 if i < 3:  # Flop cards
-                    card_tensor[1 + i, suit_idx, rank_idx] = 1
+                    card_tensor[1, suit_idx, rank_idx] = 1
                 else:  # Turn and river cards
-                    card_tensor[i, suit_idx, rank_idx] = 1
+                    card_tensor[i - 1, suit_idx, rank_idx] = 1
 
         # Current board cards
         for card in state.board_cards:
