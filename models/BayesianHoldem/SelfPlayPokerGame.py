@@ -6,7 +6,7 @@ import torch
 import torch.optim as optim
 from typing import List, Dict, Optional, Tuple
 import os
-#from InputRepresentations import InputRepresentations
+from GameRepresentations import GameRepresentations
 
 # ==================================================
 
@@ -70,12 +70,6 @@ class SelfPlayPokerGame():
         )
 
         self.state = game(raw_starting_stacks=[player0_stack, player1_stack], player_count=player_count)
-
-    # ==================================================
-
-    def _update_representations(self):
-        # TODO: Implement this when Jie has completed the representation functions
-        pass
 
     # ==================================================
 
@@ -228,7 +222,9 @@ class SelfPlayPokerGame():
             print("======= New Round =======")
             print(f"Player 0 cards: {self.state.hole_cards[0]}, chips: {self.state.stacks[0]}")
             print(f"Player 1 cards: {self.state.hole_cards[1]}, chips: {self.state.stacks[1]}")
-            
+        
+        p0_action_tensor = torch.zeros((24, 4, 4))
+        p1_action_tensor = torch.zeros((24, 4, 4))
         while self.state.street_index is not None:
             if verbose:
                 print(f"Street index: {self.state.street_index}")
@@ -240,11 +236,13 @@ class SelfPlayPokerGame():
             player = self.Player0 if player_id == 0 else self.Player1
 
             # Get state representations
-            # TODO: Replace with actual representation
-            # action_representation = InputRepresentations.get_action_representation(self.state, player_id)
-            action_representation = torch.randn(24, 4, 4)
-            # card_representation = InputRepresentations.get_card_representation(self.state, player_id)
-            card_representation = torch.randn(6, 13, 4)
+            if player_id == 0:
+                p0_action_tensor = GameRepresentations.get_action_representations(self.state, p0_action_tensor, player_id)
+                action_representation = p0_action_tensor
+            else:
+                p1_action_tensor = GameRepresentations.get_action_representations(self.state, p1_action_tensor, player_id)
+                action_representation = p1_action_tensor
+            card_representation = GameRepresentations.get_card_representations(self.state, player_id)
             
             # Get action from player
             action = player.predict_action(action_representation, card_representation)
