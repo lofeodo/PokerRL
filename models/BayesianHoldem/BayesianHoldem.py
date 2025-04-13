@@ -101,10 +101,16 @@ class BayesianHoldem(nn.Module):
     """
     def __init__(self, learning_rate: float = 0.001) -> None:
         super(BayesianHoldem, self).__init__()
-        self.cnn_a = CNN_A()
-        self.cnn_c = CNN_C()
-        self.mlp = MLP()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.cnn_a = CNN_A().to(self.device)
+        self.cnn_c = CNN_C().to(self.device)
+        self.mlp = MLP().to(self.device)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
+        
+        # Pre-allocate tensors for efficiency
+        self.action_probs = torch.zeros(4, device=self.device)
+        self.target_action = torch.zeros(4, device=self.device)
+        self.target_value = torch.zeros(1, device=self.device)
 
     def forward(self, action_representation: torch.Tensor, card_representation: torch.Tensor) -> torch.Tensor:
         """ 
@@ -112,6 +118,10 @@ class BayesianHoldem(nn.Module):
         action_representation: torch.Tensor, shape: (24, 4, 4)
         output: torch.Tensor, shape: (4,)
         """
+        # Ensure inputs are on the correct device
+        action_representation = action_representation.to(self.device)
+        card_representation = card_representation.to(self.device)
+        
         output_a = self.cnn_a(action_representation)
         output_c = self.cnn_c(card_representation)
         output_a_flat = output_a.view(-1)
@@ -126,9 +136,10 @@ class BayesianHoldem(nn.Module):
         card_representation: torch.Tensor, shape: (6, 13, 4)
         output: int
         """
-        output = self.forward(action_representation, card_representation)
-        output_prob = F.softmax(output, dim=0)
-        return output_prob.argmax().item()
+        with torch.no_grad():
+            output = self.forward(action_representation, card_representation)
+            output_prob = F.softmax(output, dim=0)
+            return output_prob.argmax().item()
 
     def compute_rewards(self, 
                         output: torch.Tensor,
@@ -154,30 +165,34 @@ class BayesianHoldem(nn.Module):
         """
         action_probs = F.softmax(output, dim=0)
         
-        reward = 0.0
+        # Normalize pot and stack sizes
+        normalized_pot = pot_size / max_stack
+        normalized_stack = stack_size / max_stack
+        
+        reward = torch.zeros(1, device=self.device)
         
         if is_terminal:
             if is_winner:
-                reward = pot_size
+                reward = torch.tensor(normalized_pot, device=self.device)
             else:
-                reward = -pot_size
+                reward = torch.tensor(-normalized_pot, device=self.device)
         else:
             if action == 0:  # Fold
-                reward = -0.3 * pot_size  # Penalty for folding
+                reward = torch.tensor(-0.3 * normalized_pot, device=self.device)
             elif action == 1:  # Check/Call
-                reward = 0.0  # Neutral for checking/calling
+                reward = torch.tensor(0.0, device=self.device)
             elif action == 2:  # Bet/Raise
-                reward = 0.2 * pot_size  # Medium positive reward for aggressive play
+                reward = torch.tensor(0.2 * normalized_pot, device=self.device)
             elif action == 3:  # All-in
-                reward = 0.1 * pot_size  # Small positive reward for going all-in
+                reward = torch.tensor(0.1 * normalized_pot, device=self.device)
                 
             # Scale reward by action probability to encourage exploration
-            reward *= action_probs[action].item()
+            reward *= action_probs[action]
             
             # Add a small penalty based on stack size to encourage chip preservation
-            reward -= 0.01 * (1 - stack_size / max_stack)
+            reward -= torch.tensor(0.01 * (1 - normalized_stack), device=self.device)
             
-        return reward
+        return reward.item()
 
     def value_function(self, 
                        output: torch.Tensor,
@@ -202,7 +217,12 @@ class BayesianHoldem(nn.Module):
         """
         action_probs = F.softmax(output, dim=0)
         
-        value = 0.0
+        # Normalize pot, stack and bet sizes
+        normalized_pot = pot_size / max_stack
+        normalized_stack = stack_size / max_stack
+        normalized_bet = bet_size / max_stack
+        
+        value = torch.zeros(1, device=self.device)
         
         # For each possible action, compute Q(s,a) and weight by action probability
         for action in range(4):
@@ -218,24 +238,21 @@ class BayesianHoldem(nn.Module):
             
             # Estimate future value based on action type
             if action == 0:  # Fold
-                future_value = stack_size  # Preserve remaining stack
+                future_value = torch.tensor(normalized_stack, device=self.device)
             elif action == 1:  # Check/Call
-                future_value = stack_size + 0.5 * pot_size  # Expected value of continuing
+                future_value = torch.tensor(normalized_stack + 0.5 * normalized_pot, device=self.device)
             elif action == 2:  # Bet/Raise
-                future_value = stack_size + pot_size + bet_size  # Potential to win increased pot
+                future_value = torch.tensor(normalized_stack + normalized_pot + normalized_bet, device=self.device)
             else:  # All-in
-                future_value = 2 * stack_size  # Potential to double up
-            
-            # Scale future value by stack ratio
-            future_value *= (stack_size / max_stack)
+                future_value = torch.tensor(2 * normalized_stack, device=self.device)
             
             # Combine immediate and future rewards with discount factor
-            q_value = immediate_reward + discount_factor * future_value
+            q_value = torch.tensor(immediate_reward, device=self.device) + discount_factor * future_value
             
             # Weight by action probability
-            value += action_probs[action].item() * q_value
+            value += action_probs[action] * q_value
         
-        return value
+        return value.item()
 
     def compute_loss(self,
                      output: torch.Tensor,
@@ -266,7 +283,9 @@ class BayesianHoldem(nn.Module):
         Returns:
             torch.Tensor: The combined loss
         """
-        action_probs = F.softmax(output, dim=0)
+        # Ensure tensors are on the correct device
+        target_action = target_action.to(self.device)
+        target_value = target_value.to(self.device)
         
         # Compute policy loss (cross-entropy)
         policy_loss = F.cross_entropy(output, target_action)
@@ -280,7 +299,7 @@ class BayesianHoldem(nn.Module):
             max_stack=max_stack,
             discount_factor=discount_factor
         )
-        value_loss = F.mse_loss(torch.tensor(predicted_value, dtype=torch.float32), target_value)
+        value_loss = F.mse_loss(torch.tensor(predicted_value, device=self.device), target_value)
         
         # Combine losses with weights
         total_loss = policy_weight * policy_loss + value_weight * value_loss
@@ -318,7 +337,7 @@ class BayesianHoldem(nn.Module):
         action_probs = F.softmax(output, dim=0)
         
         # Initialize target action
-        target_action = torch.zeros(4, dtype=torch.float32)
+        target_action = torch.zeros(4, device=self.device)
         
         if use_expert and hasattr(self, 'expert_model'):
             # Use expert model's action as target
@@ -327,9 +346,9 @@ class BayesianHoldem(nn.Module):
             target_action[expert_action] = 1.0
         else:
             # Epsilon-greedy exploration
-            if torch.rand(1) < epsilon:
+            if torch.rand(1, device=self.device) < epsilon:
                 # Random action
-                action = torch.randint(0, 4, (1,)).item()
+                action = torch.randint(0, 4, (1,), device=self.device).item()
             else:
                 # Greedy action
                 action = action_probs.argmax().item()
@@ -348,7 +367,7 @@ class BayesianHoldem(nn.Module):
         else:
             target_value = actual_return
         
-        return target_action, torch.tensor(target_value, dtype=torch.float32)
+        return target_action, torch.tensor(target_value, device=self.device)
 
     def train_step(self,
                   action_representation: torch.Tensor,
@@ -430,7 +449,7 @@ class BayesianHoldem(nn.Module):
         # Get individual losses for logging
         with torch.no_grad():
             policy_loss = F.cross_entropy(output, target_action)
-            value_loss = F.mse_loss(torch.tensor(predicted_value, dtype=torch.float32), target_value)
+            value_loss = F.mse_loss(torch.tensor(predicted_value, device=self.device), target_value)
         
         return total_loss.item(), policy_loss.item(), value_loss.item()
 
