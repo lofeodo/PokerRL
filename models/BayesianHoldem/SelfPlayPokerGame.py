@@ -166,6 +166,7 @@ class SelfPlayPokerGame(ABC):
 
     def _train_player(self, 
                      player_id: int, 
+                     pot_size: float,
                      action_representation: torch.Tensor,
                      card_representation: torch.Tensor,
                      transition: dict) -> Tuple[float, float, float]:
@@ -173,7 +174,6 @@ class SelfPlayPokerGame(ABC):
         if player_id != 0:  # Only train Player0
             return 0.0, 0.0, 0.0
             
-        pot_size = self.state.total_pot_amount
         stack_size = float(self.state.stacks[player_id])
         bet_size = float(self.BB)
         max_stack = 20000  # Match the default max_stack in BayesianHoldem
@@ -182,11 +182,14 @@ class SelfPlayPokerGame(ABC):
         if transition['is_terminal']:
             stack_delta = transition['post_state']['stacks'][player_id] - transition['pre_state']['stacks'][player_id]
             actual_return = stack_delta / max_stack  # Normalize by max_stack
+            # Determine if player won based on stack delta
+            is_winner = stack_delta > 0
         else:
             stack_delta = transition['state_changes']['stack_delta']
             # For non-terminal states, also include potential future value from pot
             pot_contribution = 0.5 * (pot_size / max_stack)  # Expected value from pot
             actual_return = (stack_delta / max_stack) + pot_contribution
+            is_winner = None
         
         # Ensure tensors are on the correct device
         action_representation = action_representation.to(self.device)
@@ -198,7 +201,9 @@ class SelfPlayPokerGame(ABC):
             pot_size=pot_size,
             stack_size=stack_size,
             bet_size=bet_size,
-            actual_return=actual_return
+            actual_return=actual_return,
+            is_terminal=transition['is_terminal'],
+            is_winner=is_winner
         )
 
     # ==================================================
@@ -238,11 +243,14 @@ class SelfPlayPokerGame(ABC):
             
             # Execute action and get state transition info
             transition = self._play_action(player_id, action, verbose)
+
+            pot_size = transition['pre_state']['pot_size'] if transition['is_terminal'] else transition['post_state']['pot_size']
             
             # Train if enabled
             if training:
                 losses = self._train_player(
                     player_id,
+                    pot_size,
                     action_representation,
                     card_representation,
                     transition  # Pass the transition information
