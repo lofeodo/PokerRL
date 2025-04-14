@@ -5,10 +5,11 @@ import pokerkit as pk
 from BayesianHoldem import BayesianHoldem
 import torch
 import torch.optim as optim
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union
 import os
 from GameRepresentations import GameRepresentations
 from datetime import datetime, timedelta
+from tqdm import tqdm  # Add this import at the top of your file
 
 # ==================================================
 
@@ -260,7 +261,8 @@ class SelfPlayPokerGame(ABC):
 
     def run_game(self, verbose: bool = False, training: bool = True) -> Dict:
         """Run a complete game with optional training."""
-        self._update_state(100 * self.BB, 100 * self.BB)
+        initial_stack = 100 * self.BB  # Store initial stack size
+        self._update_state(initial_stack, initial_stack)
         game_metrics = []
 
         while True:
@@ -275,13 +277,23 @@ class SelfPlayPokerGame(ABC):
                         print(f"Player {idx} has lost all their chips.")
                         print(f"Final stacks: {self.state.stacks}")
                     
-                    # Calculate final rewards
-                    winner = idx
-                    loser = 1 - idx
+                    # The player who lost all their chips (idx) is the loser
+                    loser = idx
+                    winner = abs(1 - loser)  # The other player is the winner
+                    
+                    # Calculate player 0's profit/loss directly from their stack change
+                    player0_profit = self.state.stacks[0] - initial_stack
+                    
                     final_rewards = {
-                        winner: float(self.state.stacks[winner]),
-                        loser: -float(self.state.stacks[winner])
+                        0: float(player0_profit),      # Player 0's profit/loss
+                        1: float(-player0_profit)      # Player 1's profit/loss
                     }
+                    
+                    if verbose:
+                        print(f"Player {loser} lost all chips")
+                        print(f"Player {winner} wins")
+                        print(f"Player 0 profit: {player0_profit/self.BB:.2f} BB")
+                        print(f"Player 1 profit: {-player0_profit/self.BB:.2f} BB")
                     
                     return {
                         'metrics': game_metrics,
@@ -292,6 +304,40 @@ class SelfPlayPokerGame(ABC):
             self._update_state(self.state.stacks[0], self.state.stacks[1])
 
     # ==================================================
+
+    def _calculate_bb_per_hand(self, stack_delta: Union[torch.Tensor, float], num_hands: int) -> torch.Tensor:
+        """Calculate the average big blinds won per hand."""
+        if num_hands == 0:
+            return torch.tensor(0.0, device=self.device)
+        
+        # Ensure stack_delta is a tensor
+        if not isinstance(stack_delta, torch.Tensor):
+            stack_delta = torch.tensor(stack_delta, device=self.device)
+        
+        # Convert stack delta to BB units and divide by number of hands
+        bb_delta = stack_delta.float() / float(self.BB)
+        return bb_delta / float(num_hands)
+
+    def _update_elo(self, player0_win: bool, k_factor: float = 32) -> None:
+        """
+        Update Elo ratings after a game.
+        Uses standard Elo formula with configurable K-factor.
+        """
+        # Convert current Elo ratings to tensors
+        player0_elo_tensor = torch.tensor(self.player0_elo, device=self.device)
+        player1_elo_tensor = torch.tensor(self.player1_elo, device=self.device)
+
+        # Get expected win probabilities
+        expected_p0 = 1.0 / (1.0 + 10**((player1_elo_tensor - player0_elo_tensor) / 400))
+        expected_p1 = 1.0 - expected_p0
+        
+        # Actual results (1 for win, 0 for loss)
+        actual_p0 = torch.tensor(1.0 if player0_win else 0.0, device=self.device)
+        actual_p1 = 1.0 - actual_p0
+        
+        # Update Elo ratings
+        self.player0_elo += k_factor * (actual_p0.item() - expected_p0.item())
+        self.player1_elo += k_factor * (actual_p1.item() - expected_p1.item())
 
     def run_training_session(self, 
                            num_games: int = 1000, 
@@ -315,48 +361,87 @@ class SelfPlayPokerGame(ABC):
             'player1_wins': 0,
             'total_losses': [],
             'policy_losses': [],
-            'value_losses': []
+            'value_losses': [],
+            'bb_per_hand': [],
+            'player0_elo': [],
+            'player1_elo': [],
+            'total_hands': 0,
+            'total_stack_delta': 0.0
         }
+
+        # Initialize Elo ratings if not already set
+        if not hasattr(self, 'player0_elo'):
+            self.player0_elo = 1500.0
+        if not hasattr(self, 'player1_elo'):
+            self.player1_elo = 1500.0
 
         best_model_path = f"{save_path}/best.pt"
         self.load_models_for_training_session(best_model_path)
         
-        for game_idx in range(num_games):
-            # Run a game and collect metrics
-            print(f"========= New game {game_idx + 1} =========")
+        # Use tqdm to create a progress bar for the number of games
+        for game_idx in tqdm(range(num_games), desc="Training Games", unit="game"):
             game_result = self.run_game(verbose=verbose, training=True)
             
-            # Update statistics
             winner = game_result['winner']
             if winner == 0:
                 training_stats['player0_wins'] += 1
             else:
                 training_stats['player1_wins'] += 1
             
+            # Update Elo ratings
+            self._update_elo(winner == 0)
+            training_stats['player0_elo'].append(self.player0_elo)
+            training_stats['player1_elo'].append(self.player1_elo)
+            
+            # Calculate BB/Hand
+            num_hands = len([m for m in game_result['metrics'] if m['player_id'] == 0])
+            stack_delta = game_result['final_rewards'][0]  # Player 0's profit/loss
+            if verbose and (game_idx + 1) % 10 == 0:  # Add debug prints
+                print(f"\nDebug - Game {game_idx + 1}:")
+                print(f"Stack Delta: {stack_delta:.2f} chips ({stack_delta/self.BB:.2f} BB)")
+                print(f"Number of Hands: {num_hands}")
+
+            training_stats['total_hands'] += num_hands
+            training_stats['total_stack_delta'] += stack_delta
+            bb_per_hand = self._calculate_bb_per_hand(stack_delta, num_hands)
+            training_stats['bb_per_hand'].append(bb_per_hand.item())
+            
             # Aggregate losses
             for metric in game_result['metrics']:
-                if metric['player_id'] == 0:  # Only track losses for Player0
+                if metric['player_id'] == 0:
                     total_loss, policy_loss, value_loss = metric['losses']
                     training_stats['total_losses'].append(total_loss)
                     training_stats['policy_losses'].append(policy_loss)
                     training_stats['value_losses'].append(value_loss)
             
-            # Calculate current win rate
             total_games = training_stats['player0_wins'] + training_stats['player1_wins']
             current_win_rate = training_stats['player0_wins'] / max(1, total_games)
             
-            # Save checkpoints periodically
             if save_path and (game_idx + 1) % save_interval == 0:
                 self._save_checkpoint(save_path, game_idx + 1, training_stats)
                 
-            # Print progress
             if verbose and (game_idx + 1) % 10 == 0:
                 print(f"Game {game_idx + 1}/{num_games}")
                 print(f"Player 0 wins: {training_stats['player0_wins']}")
                 print(f"Player 1 wins: {training_stats['player1_wins']}")
                 print(f"Win rate: {current_win_rate:.2%}")
+                print(f"BB/Hand: {sum(training_stats['bb_per_hand'])/len(training_stats['bb_per_hand']):.4f}")
+                print(f"Player 0 Elo: {self.player0_elo:.1f}")
+                print(f"Player 1 Elo: {self.player1_elo:.1f}")
                 if training_stats['total_losses']:
                     print(f"Average total loss: {sum(training_stats['total_losses'][-10:])/10:.4f}")
+        
+        print(f"Total stack delta: {training_stats['total_stack_delta']}, total hands: {training_stats['total_hands']}")
+        overall_bb_per_hand = self._calculate_bb_per_hand(
+            training_stats['total_stack_delta'],
+            training_stats['total_hands']
+        )
+        
+        print("\n========= Performance Metrics =========")
+        print(f"Overall BB/Hand: {overall_bb_per_hand:.4f}")
+        print(f"Final Player 0 Elo: {self.player0_elo:.1f}")
+        print(f"Final Player 1 Elo: {self.player1_elo:.1f}")
+        print(f"Total hands played: {training_stats['total_hands']}")
         
         return training_stats
 
@@ -375,7 +460,9 @@ class SelfPlayPokerGame(ABC):
             'player0_state': self.Player0.state_dict(),
             'game_idx': game_idx,
             'stats': stats,
-            'best_win_rate': self.best_win_rate
+            'best_win_rate': self.best_win_rate,
+            'player0_elo': self.player0_elo,
+            'player1_elo': self.player1_elo
         }
         
         torch.save(checkpoint, f"{save_path}/game_{game_idx}.pt")
@@ -402,7 +489,8 @@ class SelfPlayPokerGame(ABC):
         if save_path:
             os.makedirs(save_path, exist_ok=True)
         
-        best_win_rate = 0.0  # Track the best win rate across all sessions
+        best_win_rate = 0.0
+        total_bb_per_hand = []
         
         for session in range(num_sessions):
             session_start_time = time.time()
@@ -412,7 +500,7 @@ class SelfPlayPokerGame(ABC):
             session_stats = self.run_training_session(
                 num_games=games_per_session,
                 verbose=verbose,
-                save_interval=games_per_session // 10,  # Save 10 checkpoints per session
+                save_interval=games_per_session // 10,
                 save_path=save_path
             )
             
@@ -424,6 +512,13 @@ class SelfPlayPokerGame(ABC):
             self.session_metrics['session_win_counts'].append(session_stats['player0_wins'])
             self.session_metrics['session_game_counts'].append(total_games)
             self.session_metrics['session_timestamps'].append(time.time() - session_start_time)
+            
+            # Track BB/Hand for the session
+            session_bb_per_hand = self._calculate_bb_per_hand(
+                session_stats['total_stack_delta'],
+                session_stats['total_hands']
+            )
+            total_bb_per_hand.append(session_bb_per_hand.item())
             
             # Calculate average losses for the session
             if session_stats['total_losses']:
@@ -441,6 +536,9 @@ class SelfPlayPokerGame(ABC):
             print(f"\nSession {session + 1} Summary:")
             print(f"Win Rate: {session_win_rate:.2%}")
             print(f"Games Played: {total_games}")
+            print(f"BB/Hand: {session_bb_per_hand.item():.4f}")
+            print(f"Player 0 Elo: {self.player0_elo:.1f}")
+            print(f"Player 1 Elo: {self.player1_elo:.1f}")
             print(f"Time Taken: {self.session_metrics['session_timestamps'][-1]:.2f} seconds")
             if self.session_metrics['session_total_losses']:
                 print(f"Average Total Loss: {self.session_metrics['session_total_losses'][-1]:.4f}")
@@ -465,11 +563,14 @@ class SelfPlayPokerGame(ABC):
                 torch.save(self.Player0.state_dict(), os.path.join(save_path, 'best_model.pt'))
                 print(f"\nNew best model saved with win rate: {best_win_rate:.2%}")
         
-        # Print final training summary
+        # Print final training summary with new metrics
         print("\n========= Training Complete =========")
         print(f"Total Sessions: {num_sessions}")
         print(f"Total Games: {sum(self.session_metrics['session_game_counts'])}")
         print(f"Best Win Rate: {best_win_rate:.2%}")
+        print(f"Average BB/Hand: {sum(total_bb_per_hand)/len(total_bb_per_hand):.4f}")
+        print(f"Final Player 0 Elo: {self.player0_elo:.1f}")
+        print(f"Final Player 1 Elo: {self.player1_elo:.1f}")
         print(f"Average Session Time: {sum(self.session_metrics['session_timestamps'])/num_sessions:.2f} seconds")
         
         return self.session_metrics
