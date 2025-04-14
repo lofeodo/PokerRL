@@ -109,6 +109,13 @@ class BayesianHoldem(nn.Module):
         self.cnn_c = CNN_C().to(self.device)
         self.mlp = MLP().to(self.device)
         
+        # Exploration parameters
+        self.initial_epsilon = 1.0
+        self.final_epsilon = 0.01
+        self.epsilon_decay = 0.995
+        self.current_epsilon = self.initial_epsilon
+        self.training_steps = 0
+        
         if use_polyak:
             # Store a copy of initial parameters for polyak averaging
             self.stored_params = {
@@ -147,6 +154,14 @@ class BayesianHoldem(nn.Module):
             current_mlp[key].copy_(tau * current_mlp[key] + (1.0 - tau) * self.stored_params['mlp'][key])
             self.stored_params['mlp'][key].copy_(current_mlp[key])
 
+    def update_epsilon(self):
+        """Update epsilon based on decay rate and training steps."""
+        self.current_epsilon = max(
+            self.final_epsilon,
+            self.initial_epsilon * (self.epsilon_decay ** self.training_steps)
+        )
+        self.training_steps += 1
+
     def forward(self, action_representation: torch.Tensor, card_representation: torch.Tensor) -> torch.Tensor:
         """ 
         card_representation: torch.Tensor, shape: (6, 13, 4)
@@ -165,16 +180,37 @@ class BayesianHoldem(nn.Module):
         output = self.mlp(input)
         return output
     
-    def predict_action(self, action_representation: torch.Tensor, card_representation: torch.Tensor) -> torch.Tensor:
+    def predict_action(self, action_representation: torch.Tensor, card_representation: torch.Tensor, 
+                      training: bool = False) -> torch.Tensor:
         """
-        action_representation: torch.Tensor, shape: (24, 4, 4)
-        card_representation: torch.Tensor, shape: (6, 13, 4)
-        output: int
+        Predict an action using epsilon-greedy exploration.
+        
+        Args:
+            action_representation: torch.Tensor, shape: (24, 4, 4)
+            card_representation: torch.Tensor, shape: (6, 13, 4)
+            training: bool, whether this is during training (affects epsilon update)
+            
+        Returns:
+            int: The chosen action
         """
         with torch.no_grad():
             output = self.forward(action_representation, card_representation)
             output_prob = F.softmax(output, dim=0)
-            return output_prob.argmax().item()
+            
+            # Epsilon-greedy exploration
+            if training and torch.rand(1, device=self.device) < self.current_epsilon:
+                # Random action
+                action = torch.randint(0, 4, (1,), device=self.device).item()
+                if self.training_steps % 1000 == 0:  # Print exploration rate periodically
+                    print(f"Exploration rate: {self.current_epsilon:.4f}")
+            else:
+                # Greedy action
+                action = output_prob.argmax().item()
+            
+            if training:
+                self.update_epsilon()
+            
+            return action
 
     def compute_rewards(self, 
                         output: torch.Tensor,
