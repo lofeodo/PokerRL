@@ -12,8 +12,9 @@ from GameRepresentations import GameRepresentations
 
 class SelfPlayPokerGame():
     def __init__(self, learning_rate: float = 0.001, best_model_path: Optional[str] = None):
-        self.Player0 = BayesianHoldem()  # This player will be trained
-        self.Player1 = BayesianHoldem()  # This player will use the best previous version
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.Player0 = BayesianHoldem().to(self.device)  # This player will be trained
+        self.Player1 = BayesianHoldem().to(self.device)  # This player will use the best previous version
         
         # Load best model for Player1 if available
         if best_model_path and os.path.exists(best_model_path):
@@ -21,6 +22,10 @@ class SelfPlayPokerGame():
             print(f"Loaded best model from {best_model_path}")
         
         self.BB = 100
+        
+        # Pre-allocate tensors for efficiency
+        self.p0_action_tensor = torch.zeros((24, 4, 4), device=self.device)
+        self.p1_action_tensor = torch.zeros((24, 4, 4), device=self.device)
         
         # Training metrics
         self.episode_rewards = []
@@ -196,12 +201,21 @@ class SelfPlayPokerGame():
         pot_size = self.state.total_pot_amount
         stack_size = float(self.state.stacks[player_id])
         bet_size = float(self.BB)
+        max_stack = 20000  # Match the default max_stack in BayesianHoldem
         
+        # Calculate normalized return
         if transition['is_terminal']:
-            actual_return = transition['post_state']['stacks'][player_id] - transition['pre_state']['stacks'][player_id]
+            stack_delta = transition['post_state']['stacks'][player_id] - transition['pre_state']['stacks'][player_id]
+            actual_return = stack_delta / max_stack  # Normalize by max_stack
         else:
-            immediate_reward = transition['state_changes']['stack_delta']
-            actual_return = immediate_reward
+            stack_delta = transition['state_changes']['stack_delta']
+            # For non-terminal states, also include potential future value from pot
+            pot_contribution = 0.5 * (pot_size / max_stack)  # Expected value from pot
+            actual_return = (stack_delta / max_stack) + pot_contribution
+        
+        # Ensure tensors are on the correct device
+        action_representation = action_representation.to(self.device)
+        card_representation = card_representation.to(self.device)
         
         return self.Player0.train_step(
             action_representation=action_representation,
@@ -223,8 +237,8 @@ class SelfPlayPokerGame():
             print(f"Player 0 cards: {self.state.hole_cards[0]}, chips: {self.state.stacks[0]}")
             print(f"Player 1 cards: {self.state.hole_cards[1]}, chips: {self.state.stacks[1]}")
         
-        p0_action_tensor = torch.zeros((24, 4, 4))
-        p1_action_tensor = torch.zeros((24, 4, 4))
+        self.p0_action_tensor = torch.zeros((24, 4, 4))
+        self.p1_action_tensor = torch.zeros((24, 4, 4))
         while self.state.street_index is not None:
             if verbose:
                 print(f"Street index: {self.state.street_index}")
@@ -237,11 +251,11 @@ class SelfPlayPokerGame():
 
             # Get state representations
             if player_id == 0:
-                p0_action_tensor = GameRepresentations.get_action_representations(self.state, p0_action_tensor, player_id)
-                action_representation = p0_action_tensor
+                self.p0_action_tensor = GameRepresentations.get_action_representations(self.state, self.p0_action_tensor, player_id)
+                action_representation = self.p0_action_tensor
             else:
-                p1_action_tensor = GameRepresentations.get_action_representations(self.state, p1_action_tensor, player_id)
-                action_representation = p1_action_tensor
+                self.p1_action_tensor = GameRepresentations.get_action_representations(self.state, self.p1_action_tensor, player_id)
+                action_representation = self.p1_action_tensor
             card_representation = GameRepresentations.get_card_representations(self.state, player_id)
             
             # Get action from player

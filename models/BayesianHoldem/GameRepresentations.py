@@ -5,6 +5,12 @@ class GameRepresentations:
     """
     This class is used to obtain card and action representations
     """
+    def __init__(self):
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # Pre-allocate tensors for efficiency
+        self.card_tensor = torch.zeros((6, 4, 13), dtype=torch.float32, device=self.device)
+        self.legal_actions = torch.zeros((1, 4), dtype=torch.float32, device=self.device)
+        self.action_tensor = torch.zeros((24, 4, 4), dtype=torch.float32, device=self.device)
 
     @staticmethod
     def get_card_representations(state: pk.state.State, player_id: int) -> torch.Tensor:
@@ -76,7 +82,9 @@ class GameRepresentations:
         Row 3: sum of player 0 and player 1 actions
         Row 4: legal actions allowed at the time of the action
         """        
-        action_tensor = prev_action_tensor
+        # Ensure input tensor is on the correct device
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        action_tensor = prev_action_tensor.to(device)
 
         # Get the index of the operation that starts the current round
         start_idx, current_round = GameRepresentations.get_beginning_of_round_idx(state)
@@ -156,7 +164,7 @@ class GameRepresentations:
 
         # No action has been played this round.
         if last_player_action is None and last_other_player_action is None:
-            return torch.Tensor([[0, 1, 1, 1]])
+            return torch.tensor([[0, 1, 1, 1]], dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
 
         # Check if the player can fold
         if last_other_player_action is not None and \
