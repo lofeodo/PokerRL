@@ -201,12 +201,17 @@ class SelfPlayPokerGame():
         pot_size = self.state.total_pot_amount
         stack_size = float(self.state.stacks[player_id])
         bet_size = float(self.BB)
+        max_stack = 20000  # Match the default max_stack in BayesianHoldem
         
+        # Calculate normalized return
         if transition['is_terminal']:
-            actual_return = transition['post_state']['stacks'][player_id] - transition['pre_state']['stacks'][player_id]
+            stack_delta = transition['post_state']['stacks'][player_id] - transition['pre_state']['stacks'][player_id]
+            actual_return = stack_delta / max_stack  # Normalize by max_stack
         else:
-            immediate_reward = transition['state_changes']['stack_delta']
-            actual_return = immediate_reward
+            stack_delta = transition['state_changes']['stack_delta']
+            # For non-terminal states, also include potential future value from pot
+            pot_contribution = 0.5 * (pot_size / max_stack)  # Expected value from pot
+            actual_return = (stack_delta / max_stack) + pot_contribution
         
         # Ensure tensors are on the correct device
         action_representation = action_representation.to(self.device)
