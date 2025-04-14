@@ -99,18 +99,53 @@ class BayesianHoldem(nn.Module):
     2: Bet/Raise (BB)
     3: All-in
     """
-    def __init__(self, learning_rate: float = 0.0001) -> None:
+    def __init__(self, learning_rate: float = 0.0001, use_polyak: bool = False) -> None:
         super(BayesianHoldem, self).__init__()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.use_polyak = use_polyak
+        
+        # Initialize networks
         self.cnn_a = CNN_A().to(self.device)
         self.cnn_c = CNN_C().to(self.device)
         self.mlp = MLP().to(self.device)
+        
+        if use_polyak:
+            # Store a copy of initial parameters for polyak averaging
+            self.stored_params = {
+                'cnn_a': {k: v.clone() for k, v in self.cnn_a.state_dict().items()},
+                'cnn_c': {k: v.clone() for k, v in self.cnn_c.state_dict().items()},
+                'mlp': {k: v.clone() for k, v in self.mlp.state_dict().items()}
+            }
+        
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
         
         # Pre-allocate tensors for efficiency
         self.action_probs = torch.zeros(4, device=self.device)
         self.target_action = torch.zeros(4, device=self.device)
         self.target_value = torch.zeros(1, device=self.device)
+
+    def update_target_network(self, tau: float):
+        """Update network parameters using polyak averaging: θnew = τθcandidate + (1-τ)θold"""
+        if not self.use_polyak:
+            return
+            
+        # Update CNN_A parameters
+        current_cnn_a = self.cnn_a.state_dict()
+        for key in current_cnn_a:
+            current_cnn_a[key].copy_(tau * current_cnn_a[key] + (1.0 - tau) * self.stored_params['cnn_a'][key])
+            self.stored_params['cnn_a'][key].copy_(current_cnn_a[key])
+            
+        # Update CNN_C parameters
+        current_cnn_c = self.cnn_c.state_dict()
+        for key in current_cnn_c:
+            current_cnn_c[key].copy_(tau * current_cnn_c[key] + (1.0 - tau) * self.stored_params['cnn_c'][key])
+            self.stored_params['cnn_c'][key].copy_(current_cnn_c[key])
+            
+        # Update MLP parameters
+        current_mlp = self.mlp.state_dict()
+        for key in current_mlp:
+            current_mlp[key].copy_(tau * current_mlp[key] + (1.0 - tau) * self.stored_params['mlp'][key])
+            self.stored_params['mlp'][key].copy_(current_mlp[key])
 
     def forward(self, action_representation: torch.Tensor, card_representation: torch.Tensor) -> torch.Tensor:
         """ 
