@@ -10,6 +10,7 @@ import os
 from GameRepresentations import GameRepresentations
 from datetime import datetime, timedelta
 from tqdm import tqdm  # Add this import at the top of your file
+import random  # Add at the top with other imports
 
 # ==================================================
 
@@ -374,9 +375,6 @@ class SelfPlayPokerGame(ABC):
             self.player0_elo = 1500.0
         if not hasattr(self, 'player1_elo'):
             self.player1_elo = 1500.0
-
-        best_model_path = f"{save_path}/best.pt"
-        self.load_models_for_training_session(best_model_path)
         
         # Use tqdm to create a progress bar for the number of games
         for game_idx in tqdm(range(num_games), desc="Training Games", unit="game"):
@@ -417,9 +415,6 @@ class SelfPlayPokerGame(ABC):
             total_games = training_stats['player0_wins'] + training_stats['player1_wins']
             current_win_rate = training_stats['player0_wins'] / max(1, total_games)
             
-            if save_path and (game_idx + 1) % save_interval == 0:
-                self._save_checkpoint(save_path, game_idx + 1, training_stats)
-                
             if verbose and (game_idx + 1) % 10 == 0:
                 print(f"Game {game_idx + 1}/{num_games}")
                 print(f"Player 0 wins: {training_stats['player0_wins']}")
@@ -431,7 +426,6 @@ class SelfPlayPokerGame(ABC):
                 if training_stats['total_losses']:
                     print(f"Average total loss: {sum(training_stats['total_losses'][-10:])/10:.4f}")
         
-        print(f"Total stack delta: {training_stats['total_stack_delta']}, total hands: {training_stats['total_hands']}")
         overall_bb_per_hand = self._calculate_bb_per_hand(
             training_stats['total_stack_delta'],
             training_stats['total_hands']
@@ -443,29 +437,63 @@ class SelfPlayPokerGame(ABC):
         print(f"Final Player 1 Elo: {self.player1_elo:.1f}")
         print(f"Total hands played: {training_stats['total_hands']}")
         
+        # Calculate final metrics for the session
+        total_games = training_stats['player0_wins'] + training_stats['player1_wins']
+        training_stats['win_rate'] = training_stats['player0_wins'] / max(1, total_games)
+        training_stats['bb_per_hand'] = overall_bb_per_hand.item()
+        training_stats['player0_elo'] = self.player0_elo
+        training_stats['player1_elo'] = self.player1_elo
+        
         return training_stats
 
-    # ==================================================
-
     @abstractmethod
-    def load_models_for_training_session(self, best_model_path: str, verbose: bool = False):
-        """Load models for a training session. Implementation depends on the training strategy."""
+    def load_models_for_training_session(self, save_path: Optional[str] = None):
+        """
+        Load models for a training session. Implementation depends on the training strategy.
+        
+        Args:
+            save_path: Directory containing saved models
+        """
         pass
 
-    # ==================================================
-
-    def _save_checkpoint(self, save_path: str, game_idx: int, stats: dict):
-        """Save model checkpoints and training statistics."""
-        checkpoint = {
-            'player0_state': self.Player0.state_dict(),
-            'game_idx': game_idx,
-            'stats': stats,
-            'best_win_rate': self.best_win_rate,
-            'player0_elo': self.player0_elo,
-            'player1_elo': self.player1_elo
-        }
+    def _save_best_models(self, save_path: str, current_win_rate: float, current_bb_per_hand: float, 
+                         current_elo: float, best_win_rate: float, best_bb_per_hand: float, 
+                         best_elo: float) -> Tuple[float, float, float]:
+        """
+        Save best models based on different metrics.
         
-        torch.save(checkpoint, f"{save_path}/game_{game_idx}.pt")
+        Args:
+            save_path: Directory to save models
+            current_*: Current metrics
+            best_*: Best metrics so far
+            
+        Returns:
+            Updated best metrics
+        """
+        best_models_dir = os.path.join(save_path, 'best_models')
+        
+        # Update and save best win rate model
+        if current_win_rate > best_win_rate:
+            best_win_rate = current_win_rate
+            torch.save(self.Player0.state_dict(), 
+                     os.path.join(best_models_dir, 'best_winrate.pt'))
+            print(f"\nSaved new best win rate model: {best_win_rate:.4f}")
+        
+        # Update and save best BB/hand model
+        if current_bb_per_hand > best_bb_per_hand:
+            best_bb_per_hand = current_bb_per_hand
+            torch.save(self.Player0.state_dict(), 
+                     os.path.join(best_models_dir, 'best_bbhand.pt'))
+            print(f"\nSaved new best BB/hand model: {best_bb_per_hand:.4f}")
+        
+        # Update and save best Elo model
+        if current_elo > best_elo:
+            best_elo = current_elo
+            torch.save(self.Player0.state_dict(), 
+                     os.path.join(best_models_dir, 'best_elo.pt'))
+            print(f"\nSaved new best Elo model: {best_elo:.1f}")
+            
+        return best_win_rate, best_bb_per_hand, best_elo
 
     def train_sessions(self,
                       num_sessions: int = 10,
@@ -473,75 +501,50 @@ class SelfPlayPokerGame(ABC):
                       save_path: Optional[str] = None,
                       plot_path: Optional[str] = None,
                       verbose: bool = False) -> Dict:
-        """
-        Train the model over multiple sessions.
-        
-        Args:
-            num_sessions: Number of training sessions to run
-            games_per_session: Number of games per training session
-            save_path: Directory to save models and checkpoints
-            plot_path: Directory to save training plots
-            verbose: Whether to print progress information
-            
-        Returns:
-            Dict containing training statistics across all sessions
-        """
+        """Train the model over multiple sessions with k-best self play."""
         if save_path:
             os.makedirs(save_path, exist_ok=True)
+            best_models_dir = os.path.join(save_path, 'best_models')
+            os.makedirs(best_models_dir, exist_ok=True)
         
         best_win_rate = 0.0
-        total_bb_per_hand = []
+        best_bb_per_hand = 0.0
+        best_elo = 1500.0
         
         for session in range(num_sessions):
             session_start_time = time.time()
             print(f"\n========= Starting Training Session {session + 1}/{num_sessions} =========")
             
+            # Every 5 sessions, load new models
+            if session > 0 and session % 5 == 0:
+                self.load_models_for_training_session(save_path)
+            
             # Run training session
             session_stats = self.run_training_session(
                 num_games=games_per_session,
                 verbose=verbose,
-                save_interval=games_per_session // 10,
+                save_interval=games_per_session,
                 save_path=save_path
             )
             
-            # Update session metrics
-            total_games = session_stats['player0_wins'] + session_stats['player1_wins']
-            session_win_rate = session_stats['player0_wins'] / max(1, total_games)
+            # Get current metrics
+            current_win_rate = session_stats['win_rate']
+            current_bb_per_hand = session_stats['bb_per_hand']
+            current_elo = session_stats['player0_elo']
             
-            self.session_metrics['session_win_rates'].append(session_win_rate)
-            self.session_metrics['session_win_counts'].append(session_stats['player0_wins'])
-            self.session_metrics['session_game_counts'].append(total_games)
-            self.session_metrics['session_timestamps'].append(time.time() - session_start_time)
-            
-            # Track BB/Hand for the session
-            session_bb_per_hand = self._calculate_bb_per_hand(
-                session_stats['total_stack_delta'],
-                session_stats['total_hands']
-            )
-            total_bb_per_hand.append(session_bb_per_hand.item())
-            
-            # Calculate average losses for the session
-            if session_stats['total_losses']:
-                self.session_metrics['session_total_losses'].append(
-                    sum(session_stats['total_losses']) / len(session_stats['total_losses'])
-                )
-                self.session_metrics['session_policy_losses'].append(
-                    sum(session_stats['policy_losses']) / len(session_stats['policy_losses'])
-                )
-                self.session_metrics['session_value_losses'].append(
-                    sum(session_stats['value_losses']) / len(session_stats['value_losses'])
+            # Update and save best models if current metrics are better
+            if save_path:
+                best_win_rate, best_bb_per_hand, best_elo = self._save_best_models(
+                    save_path, current_win_rate, current_bb_per_hand, current_elo,
+                    best_win_rate, best_bb_per_hand, best_elo
                 )
             
             # Print session summary
-            print(f"\nSession {session + 1} Summary:")
-            print(f"Win Rate: {session_win_rate:.2%}")
-            print(f"Games Played: {total_games}")
-            print(f"BB/Hand: {session_bb_per_hand.item():.4f}")
-            print(f"Player 0 Elo: {self.player0_elo:.1f}")
-            print(f"Player 1 Elo: {self.player1_elo:.1f}")
-            print(f"Time Taken: {self.session_metrics['session_timestamps'][-1]:.2f} seconds")
-            if self.session_metrics['session_total_losses']:
-                print(f"Average Total Loss: {self.session_metrics['session_total_losses'][-1]:.4f}")
+            print(f"Average loss: {sum(session_stats['total_losses'])/len(session_stats['total_losses']):.4f}")
+            print(f"\nSession {session + 1} completed in {time.time() - session_start_time:.1f}s")
+            print(f"Win rate: {current_win_rate:.3f}")
+            print(f"BB/hand: {current_bb_per_hand:.3f}")
+            print(f"Elo rating: {current_elo:.1f}")
             
             # Save session metrics
             if save_path:
@@ -556,51 +559,41 @@ class SelfPlayPokerGame(ABC):
                     os.path.join(plot_path, f'session_{session + 1}'),
                     show=False
                 )
-            
-            # Save the model if the current session's win rate is better than the best win rate
-            if session_win_rate > best_win_rate and save_path:
-                best_win_rate = session_win_rate
-                torch.save(self.Player0.state_dict(), os.path.join(save_path, 'best_model.pt'))
-                print(f"\nNew best model saved with win rate: {best_win_rate:.2%}")
         
-        # Print final training summary with new metrics
+        # Print final training summary
         print("\n========= Training Complete =========")
         print(f"Total Sessions: {num_sessions}")
         print(f"Total Games: {sum(self.session_metrics['session_game_counts'])}")
         print(f"Best Win Rate: {best_win_rate:.2%}")
-        print(f"Average BB/Hand: {sum(total_bb_per_hand)/len(total_bb_per_hand):.4f}")
+        print(f"Best BB/Hand: {best_bb_per_hand:.4f}")
+        print(f"Best Elo: {best_elo:.1f}")
         print(f"Final Player 0 Elo: {self.player0_elo:.1f}")
         print(f"Final Player 1 Elo: {self.player1_elo:.1f}")
-        print(f"Average Session Time: {sum(self.session_metrics['session_timestamps'])/num_sessions:.2f} seconds")
         
         return self.session_metrics
 
-    def train_for_duration(self,
-                          duration: timedelta,
-                          games_per_session: int = 50,
-                          save_path: Optional[str] = None,
-                          plot_path: Optional[str] = None,
-                          verbose: bool = False) -> Dict:
+    def train_for_duration(self, duration: timedelta, games_per_session: int = 50, save_path: str =None, verbose: bool = False):
         """
-        Train the model for a specified duration.
+        Train the model for a specified duration with k-best self play.
         
         Args:
-            duration: How long to train for (e.g., timedelta(hours=48))
-            games_per_session: Number of games per training session
-            save_path: Directory to save models and checkpoints
-            plot_path: Directory to save training plots
-            verbose: Whether to print progress information
-            
-        Returns:
-            Dict containing training statistics across all sessions
+            duration (timedelta): Duration to train
+            games_per_session (int): Number of games to play per session
+            save_path (str): Directory to save models and checkpoints
+            verbose (bool): Whether to print detailed progress
         """
-        if save_path:
-            os.makedirs(save_path, exist_ok=True)
-        
-        best_win_rate = 0.0
         start_time = datetime.now()
         end_time = start_time + duration
         session = 0
+        best_win_rate = 0.0
+        best_bb_per_hand = 0.0
+        best_elo = 1500.0
+        
+        # Create directories if they don't exist
+        if save_path:
+            os.makedirs(save_path, exist_ok=True)
+            best_models_dir = os.path.join(save_path, 'best_models')
+            os.makedirs(best_models_dir, exist_ok=True)
         
         while datetime.now() < end_time:
             session_start_time = time.time()
@@ -608,71 +601,56 @@ class SelfPlayPokerGame(ABC):
             print(f"\n========= Starting Training Session {session} =========")
             print(f"Time remaining: {end_time - datetime.now()}")
             
+            # Every 5 sessions, load new models
+            if session > 1 and session % 5 == 0:
+                self.load_models_for_training_session(save_path)
+            
             # Run training session
             session_stats = self.run_training_session(
                 num_games=games_per_session,
                 verbose=verbose,
-                save_interval=games_per_session // 10,  # Save 10 checkpoints per session
+                save_interval=games_per_session,
                 save_path=save_path
             )
             
-            # Update session metrics
-            total_games = session_stats['player0_wins'] + session_stats['player1_wins']
-            session_win_rate = session_stats['player0_wins'] / max(1, total_games)
+            # Get current metrics
+            current_win_rate = session_stats['win_rate']
+            current_bb_per_hand = session_stats['bb_per_hand']
+            current_elo = session_stats['player0_elo']
             
-            self.session_metrics['session_win_rates'].append(session_win_rate)
-            self.session_metrics['session_win_counts'].append(session_stats['player0_wins'])
-            self.session_metrics['session_game_counts'].append(total_games)
-            self.session_metrics['session_timestamps'].append(time.time() - session_start_time)
-            
-            # Calculate average losses for the session
-            if session_stats['total_losses']:
-                self.session_metrics['session_total_losses'].append(
-                    sum(session_stats['total_losses']) / len(session_stats['total_losses'])
-                )
-                self.session_metrics['session_policy_losses'].append(
-                    sum(session_stats['policy_losses']) / len(session_stats['policy_losses'])
-                )
-                self.session_metrics['session_value_losses'].append(
-                    sum(session_stats['value_losses']) / len(session_stats['value_losses'])
+            # Update and save best models if current metrics are better
+            if save_path:
+                best_win_rate, best_bb_per_hand, best_elo = self._save_best_models(
+                    save_path, current_win_rate, current_bb_per_hand, current_elo,
+                    best_win_rate, best_bb_per_hand, best_elo
                 )
             
             # Print session summary
-            print(f"\nSession {session} Summary:")
-            print(f"Win Rate: {session_win_rate:.2%}")
-            print(f"Games Played: {total_games}")
-            print(f"Time Taken: {self.session_metrics['session_timestamps'][-1]:.2f} seconds")
-            if self.session_metrics['session_total_losses']:
-                print(f"Average Total Loss: {self.session_metrics['session_total_losses'][-1]:.4f}")
+            print(f"\nSession {session} completed in {time.time() - session_start_time:.1f}s")
+            print(f"Win rate: {100*current_win_rate:.1f}%")
+            print(f"BB/hand: {current_bb_per_hand:.3f}")
+            print(f"Elo rating: {current_elo:.1f}")
             
-            # Save session metrics
-            if save_path:
-                metrics_path = os.path.join(save_path, f'session_{session}_metrics.pt')
-                torch.save(self.session_metrics, metrics_path)
+            # Check if we should continue training
+            if datetime.now() >= end_time:
+                print("\nTraining duration completed")
+                break
             
-            # Plot training progress
-            if plot_path:
-                os.makedirs(plot_path, exist_ok=True)
-                Utilities.plot_all_stats(
-                    self.session_metrics,
-                    os.path.join(plot_path, f'session_{session}'),
-                    show=False
-                )
-            
-            # Save the model if the current session's win rate is better than the best win rate
-            if session_win_rate > best_win_rate and save_path:
-                best_win_rate = session_win_rate
-                torch.save(self.Player0.state_dict(), os.path.join(save_path, 'best_model.pt'))
-                print(f"\nNew best model saved with win rate: {best_win_rate:.2%}")
+            # Optional: Add a small delay between sessions
+            time.sleep(1)
         
-        # Print final training summary
-        print("\n========= Training Complete =========")
-        print(f"Total Sessions: {session}")
-        print(f"Total Games: {sum(self.session_metrics['session_game_counts'])}")
-        print(f"Best Win Rate: {best_win_rate:.2%}")
-        print(f"Total Training Time: {datetime.now() - start_time}")
-        print(f"Average Session Time: {sum(self.session_metrics['session_timestamps'])/session:.2f} seconds")
+        # Print final best metrics
+        print("\nTraining completed!")
+        print(f"Best metrics achieved:")
+        print(f"Win Rate: {best_win_rate:.4f}")
+        print(f"BB/Hand: {best_bb_per_hand:.4f}")
+        print(f"Elo: {best_elo:.1f}")
         
-        return self.session_metrics
+        return {
+            'best_win_rate': best_win_rate,
+            'best_bb_per_hand': best_bb_per_hand,
+            'best_elo': best_elo,
+            'total_sessions': session
+        }
 
 # ==================================================

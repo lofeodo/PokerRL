@@ -3,6 +3,7 @@ from BayesianHoldem import BayesianHoldem
 import torch
 import os
 from typing import Optional
+import random
 
 class PolyakSelfPlayPokerGame(SelfPlayPokerGame):
     def __init__(self, learning_rate: float = 0.001, best_model_path: Optional[str] = None, polyak_tau: float = 0.005):
@@ -41,17 +42,30 @@ class PolyakSelfPlayPokerGame(SelfPlayPokerGame):
             'session_timestamps': []  # Timestamps for each session
         }
 
-    def load_models_for_training_session(self, best_model_path: str, verbose: bool = False):
-        """Load Player1 from best model and update Player0's target network."""
-        if os.path.exists(best_model_path):
-            # Load best model into Player1
-            self.Player1.load_state_dict(torch.load(best_model_path))
+    def load_models_for_training_session(self, save_path: Optional[str] = None):
+        """
+        Load models for a training session. For polyak self-play, only Player1 is loaded from k-best models.
+        Player0 accumulates training from all past sessions.
+        
+        Args:
+            save_path: Directory containing saved models
+        """
+        if save_path:
+            best_models_dir = os.path.join(save_path, 'best_models')
+            model_types = ['winrate', 'bbhand', 'elo']
             
-            # Update Player0's target network using polyak averaging
-            self.Player0.update_target_network(self.polyak_tau)
+            # Load Player1 from k-best
+            available_models = [
+                m for m in model_types 
+                if os.path.exists(os.path.join(best_models_dir, f'best_{m}.pt'))
+            ]
             
-            if verbose:
-                print(f"Loaded best model from {best_model_path} and updated target network")
+            if available_models:
+                chosen_model = random.choice(available_models)
+                model_path = os.path.join(best_models_dir, f'best_{chosen_model}.pt')
+                print(f"\nLoading best {chosen_model} model as Player1")
+                self.Player1.load_state_dict(torch.load(model_path))
+            else:
+                print(f"No best models found in {best_models_dir}")
         else:
-            if verbose:
-                print(f"No best model found at {best_model_path}") 
+            print("No save_path provided") 
