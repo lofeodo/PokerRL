@@ -1,167 +1,196 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from typing import Dict, List
+import matplotlib.pyplot as plt
 import os
+import pandas as pd
+from typing import Dict, List
 
 class Utilities:
     @staticmethod
-    def plot_training_stats(stats: Dict, save_path: str = None, show: bool = True):
-        """
-        Plot various training statistics including win rates and losses.
-        
-        Args:
-            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
-            save_path: Optional path to save the plots
-            show: Whether to display the plots
-        """
-        # Create figure with subplots
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    def plot_training_stats(stats: dict, save_path: str = None, show: bool = True):
+        """Plot comprehensive training statistics."""
+        fig, axes = plt.subplots(3, 2, figsize=(20, 15))
         fig.suptitle('Training Statistics', fontsize=16)
         
         # Plot win rate over sessions
         sessions = np.arange(1, len(stats['session_win_rates']) + 1)
         axes[0, 0].plot(sessions, stats['session_win_rates'], label='Win Rate')
         axes[0, 0].set_title('Win Rate Over Sessions')
-        axes[0, 0].set_xlabel('Session Number')
+        axes[0, 0].set_xlabel('Session')
         axes[0, 0].set_ylabel('Win Rate')
         axes[0, 0].grid(True)
-        axes[0, 0].legend()
+        
+        # Plot BB/hand over sessions
+        axes[0, 1].plot(sessions, stats['session_bb_per_hand'], label='BB/Hand')
+        axes[0, 1].set_title('BB/Hand Over Sessions')
+        axes[0, 1].set_xlabel('Session')
+        axes[0, 1].set_ylabel('BB/Hand')
+        axes[0, 1].grid(True)
+        
+        # Plot Elo ratings over sessions
+        axes[1, 0].plot(sessions, stats['session_player0_elo'], label='Player 0 Elo')
+        axes[1, 0].plot(sessions, stats['session_player1_elo'], label='Player 1 Elo')
+        axes[1, 0].set_title('Elo Ratings Over Sessions')
+        axes[1, 0].set_xlabel('Session')
+        axes[1, 0].set_ylabel('Elo Rating')
+        axes[1, 0].legend()
+        axes[1, 0].grid(True)
         
         # Plot total losses over sessions
-        axes[0, 1].plot(sessions, stats['session_total_losses'], label='Total Loss')
-        axes[0, 1].set_title('Total Loss Over Sessions')
-        axes[0, 1].set_xlabel('Session Number')
-        axes[0, 1].set_ylabel('Loss')
-        axes[0, 1].grid(True)
-        axes[0, 1].legend()
-        
-        # Plot policy and value losses over sessions
-        axes[1, 0].plot(sessions, stats['session_policy_losses'], label='Policy Loss')
-        axes[1, 0].plot(sessions, stats['session_value_losses'], label='Value Loss')
-        axes[1, 0].set_title('Policy and Value Losses Over Sessions')
-        axes[1, 0].set_xlabel('Session Number')
-        axes[1, 0].set_ylabel('Loss')
-        axes[1, 0].grid(True)
-        axes[1, 0].legend()
-        
-        # Plot moving averages of losses
-        window_size = min(5, len(sessions))  # Use smaller window for sessions
-        total_loss_ma = np.convolve(stats['session_total_losses'], np.ones(window_size)/window_size, mode='valid')
-        policy_loss_ma = np.convolve(stats['session_policy_losses'], np.ones(window_size)/window_size, mode='valid')
-        value_loss_ma = np.convolve(stats['session_value_losses'], np.ones(window_size)/window_size, mode='valid')
-        
-        axes[1, 1].plot(sessions[window_size-1:], total_loss_ma, label='Total Loss MA')
-        axes[1, 1].plot(sessions[window_size-1:], policy_loss_ma, label='Policy Loss MA')
-        axes[1, 1].plot(sessions[window_size-1:], value_loss_ma, label='Value Loss MA')
-        axes[1, 1].set_title(f'Moving Averages of Losses (Window Size = {window_size})')
-        axes[1, 1].set_xlabel('Session Number')
+        axes[1, 1].plot(sessions, stats['session_total_losses'], label='Total Loss')
+        axes[1, 1].set_title('Total Loss Over Sessions')
+        axes[1, 1].set_xlabel('Session')
         axes[1, 1].set_ylabel('Loss')
         axes[1, 1].grid(True)
-        axes[1, 1].legend()
         
-        # Adjust layout
+        # Plot policy and value losses separately
+        axes[2, 0].plot(sessions, stats['session_policy_losses'], label='Policy Loss')
+        axes[2, 0].plot(sessions, stats['session_value_losses'], label='Value Loss')
+        axes[2, 0].set_title('Policy and Value Losses Over Sessions')
+        axes[2, 0].set_xlabel('Session')
+        axes[2, 0].set_ylabel('Loss')
+        axes[2, 0].legend()
+        axes[2, 0].grid(True)
+        
+        # Plot hands played per session
+        axes[2, 1].plot(sessions, stats['session_hands_played'], label='Hands Played')
+        axes[2, 1].set_title('Hands Played Per Session')
+        axes[2, 1].set_xlabel('Session')
+        axes[2, 1].set_ylabel('Number of Hands')
+        axes[2, 1].grid(True)
+        
         plt.tight_layout()
-        
-        # Save plot if path is provided
         if save_path:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path)
-        
-        # Show plot if requested
         if show:
             plt.show()
-        
         plt.close()
 
     @staticmethod
-    def plot_win_distribution(stats: Dict, save_path: str = None, show: bool = True):
-        """
-        Plot the distribution of wins between players.
+    def plot_win_distribution(stats: dict, save_path: str = None, show: bool = True):
+        """Plot distribution of wins and losses."""
+        fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+        fig.suptitle('Win/Loss Distribution', fontsize=16)
         
-        Args:
-            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
-            save_path: Optional path to save the plot
-            show: Whether to display the plot
-        """
-        plt.figure(figsize=(8, 6))
+        # Plot win/loss pie chart
+        wins = stats['total_player0_wins']
+        losses = stats['total_player1_wins']
+        total = wins + losses
+        axes[0].pie([wins, losses], labels=['Wins', 'Losses'], autopct='%1.1f%%')
+        axes[0].set_title(f'Win/Loss Ratio (Total Games: {total})')
         
-        # Calculate total wins for each player
-        total_player0_wins = sum(stats['session_win_counts'])
-        total_player1_wins = sum(stats['session_game_counts']) - total_player0_wins
+        # Plot win rate over time (rolling average)
+        sessions = np.arange(1, len(stats['session_win_rates']) + 1)
+        rolling_avg = pd.Series(stats['session_win_rates']).rolling(window=5).mean()
+        axes[1].plot(sessions, stats['session_win_rates'], alpha=0.3, label='Raw')
+        axes[1].plot(sessions, rolling_avg, label='Rolling Avg (5)')
+        axes[1].set_title('Win Rate Trend')
+        axes[1].set_xlabel('Session')
+        axes[1].set_ylabel('Win Rate')
+        axes[1].legend()
+        axes[1].grid(True)
         
-        # Create pie chart
-        labels = ['Player 0', 'Player 1']
-        sizes = [total_player0_wins, total_player1_wins]
-        colors = ['lightblue', 'lightcoral']
-        
-        plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-        plt.axis('equal')
-        plt.title('Overall Win Distribution')
-        
-        # Save plot if path is provided
+        plt.tight_layout()
         if save_path:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path)
-        
-        # Show plot if requested
         if show:
             plt.show()
-        
         plt.close()
 
     @staticmethod
-    def plot_loss_distribution(stats: Dict, save_path: str = None, show: bool = True):
-        """
-        Plot the distribution of losses.
+    def plot_loss_distribution(stats: dict, save_path: str = None, show: bool = True):
+        """Plot distribution of losses."""
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        fig.suptitle('Loss Distribution', fontsize=16)
         
-        Args:
-            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
-            save_path: Optional path to save the plot
-            show: Whether to display the plot
-        """
-        plt.figure(figsize=(10, 6))
+        # Plot total loss distribution
+        axes[0, 0].hist(stats['session_total_losses'], bins=20)
+        axes[0, 0].set_title('Total Loss Distribution')
+        axes[0, 0].set_xlabel('Loss')
+        axes[0, 0].set_ylabel('Frequency')
         
-        # Create histogram of losses
-        plt.hist(stats['session_total_losses'], bins=min(20, len(stats['session_total_losses'])), 
-                alpha=0.7, label='Total Loss')
-        plt.hist(stats['session_policy_losses'], bins=min(20, len(stats['session_policy_losses'])), 
-                alpha=0.7, label='Policy Loss')
-        plt.hist(stats['session_value_losses'], bins=min(20, len(stats['session_value_losses'])), 
-                alpha=0.7, label='Value Loss')
+        # Plot policy loss distribution
+        axes[0, 1].hist(stats['session_policy_losses'], bins=20)
+        axes[0, 1].set_title('Policy Loss Distribution')
+        axes[0, 1].set_xlabel('Loss')
+        axes[0, 1].set_ylabel('Frequency')
         
-        plt.title('Distribution of Session Losses')
-        plt.xlabel('Loss Value')
-        plt.ylabel('Frequency')
-        plt.legend()
-        plt.grid(True)
+        # Plot value loss distribution
+        axes[1, 0].hist(stats['session_value_losses'], bins=20)
+        axes[1, 0].set_title('Value Loss Distribution')
+        axes[1, 0].set_xlabel('Loss')
+        axes[1, 0].set_ylabel('Frequency')
         
-        # Save plot if path is provided
+        # Plot loss correlation
+        axes[1, 1].scatter(stats['session_policy_losses'], stats['session_value_losses'])
+        axes[1, 1].set_title('Policy vs Value Loss Correlation')
+        axes[1, 1].set_xlabel('Policy Loss')
+        axes[1, 1].set_ylabel('Value Loss')
+        
+        plt.tight_layout()
         if save_path:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path)
-        
-        # Show plot if requested
         if show:
             plt.show()
-        
         plt.close()
 
     @staticmethod
-    def plot_all_stats(stats: Dict, save_dir: str = None, show: bool = True):
-        """
-        Plot all available statistics and save them to the specified directory.
+    def plot_learning_progress(stats: dict, save_path: str = None, show: bool = True):
+        """Plot learning progress metrics."""
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        fig.suptitle('Learning Progress', fontsize=16)
         
-        Args:
-            stats: Dictionary containing training statistics from SelfPlayPokerGame.train()
-            save_dir: Optional directory to save the plots
-            show: Whether to display the plots
-        """
+        # Plot BB/hand trend
+        sessions = np.arange(1, len(stats['session_bb_per_hand']) + 1)
+        rolling_avg = pd.Series(stats['session_bb_per_hand']).rolling(window=5).mean()
+        axes[0, 0].plot(sessions, stats['session_bb_per_hand'], alpha=0.3, label='Raw')
+        axes[0, 0].plot(sessions, rolling_avg, label='Rolling Avg (5)')
+        axes[0, 0].set_title('BB/Hand Trend')
+        axes[0, 0].set_xlabel('Session')
+        axes[0, 0].set_ylabel('BB/Hand')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True)
+        
+        # Plot Elo rating trend
+        axes[0, 1].plot(sessions, stats['session_player0_elo'], label='Player 0')
+        axes[0, 1].plot(sessions, stats['session_player1_elo'], label='Player 1')
+        axes[0, 1].set_title('Elo Rating Trend')
+        axes[0, 1].set_xlabel('Session')
+        axes[0, 1].set_ylabel('Elo Rating')
+        axes[0, 1].legend()
+        axes[0, 1].grid(True)
+        
+        # Plot hands played trend
+        axes[1, 0].plot(sessions, stats['session_hands_played'])
+        axes[1, 0].set_title('Hands Played Trend')
+        axes[1, 0].set_xlabel('Session')
+        axes[1, 0].set_ylabel('Number of Hands')
+        axes[1, 0].grid(True)
+        
+        # Plot session duration
+        axes[1, 1].plot(sessions, stats['session_durations'])
+        axes[1, 1].set_title('Session Duration Trend')
+        axes[1, 1].set_xlabel('Session')
+        axes[1, 1].set_ylabel('Duration (seconds)')
+        axes[1, 1].grid(True)
+        
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path)
+        if show:
+            plt.show()
+        plt.close()
+
+    @staticmethod
+    def plot_all_stats(stats: dict, save_dir: str = None, show: bool = True):
+        """Plot all statistics."""
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
             Utilities.plot_training_stats(stats, os.path.join(save_dir, 'training_stats.png'), show)
             Utilities.plot_win_distribution(stats, os.path.join(save_dir, 'win_distribution.png'), show)
             Utilities.plot_loss_distribution(stats, os.path.join(save_dir, 'loss_distribution.png'), show)
+            Utilities.plot_learning_progress(stats, os.path.join(save_dir, 'learning_progress.png'), show)
         else:
-            Utilities.plot_training_stats(stats, None, show)
-            Utilities.plot_win_distribution(stats, None, show)
-            Utilities.plot_loss_distribution(stats, None, show) 
+            Utilities.plot_training_stats(stats, show=show)
+            Utilities.plot_win_distribution(stats, show=show)
+            Utilities.plot_loss_distribution(stats, show=show)
+            Utilities.plot_learning_progress(stats, show=show) 

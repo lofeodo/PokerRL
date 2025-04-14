@@ -32,15 +32,7 @@ class PolyakSelfPlayPokerGame(SelfPlayPokerGame):
         self.best_model_path = best_model_path
         
         # Session tracking metrics
-        self.session_metrics = {
-            'session_win_rates': [],  # Win rate per session
-            'session_total_losses': [],  # Average total loss per session
-            'session_policy_losses': [],  # Average policy loss per session
-            'session_value_losses': [],  # Average value loss per session
-            'session_win_counts': [],  # Number of wins per session
-            'session_game_counts': [],  # Number of games per session
-            'session_timestamps': []  # Timestamps for each session
-        }
+        self._init_session_metrics()
 
     def load_models_for_training_session(self, save_path: Optional[str] = None):
         """
@@ -64,7 +56,13 @@ class PolyakSelfPlayPokerGame(SelfPlayPokerGame):
                 chosen_model = random.choice(available_models)
                 model_path = os.path.join(best_models_dir, f'best_{chosen_model}.pt')
                 print(f"\nLoading best {chosen_model} model as Player1")
-                self.Player1.load_state_dict(torch.load(model_path))
+                
+                # Load both model state dict and Elo
+                checkpoint = torch.load(model_path)
+                self.Player1.load_state_dict(checkpoint['model_state_dict'])
+                self.player1_elo = checkpoint['elo']
+                
+                print(f"Updated Player1 Elo rating to: {self.player1_elo:.1f}")
             else:
                 print(f"No best models found in {best_models_dir}")
         else:
