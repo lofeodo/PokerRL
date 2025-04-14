@@ -275,7 +275,7 @@ class BayesianHoldem(nn.Module):
                      max_stack: int = 20000,
                      discount_factor: float = 0.95,
                      policy_weight: float = 1.0,
-                     value_weight: float = 1.0) -> torch.Tensor:
+                     value_weight: float = 2.0) -> torch.Tensor:
         """
         Compute the combined policy and value loss.
         
@@ -300,10 +300,11 @@ class BayesianHoldem(nn.Module):
         
         # Compute policy loss (cross-entropy)
         policy_loss = F.cross_entropy(output, target_action)
-        print(f"target_action: {target_action}, output: {output}")
 
         # Normalize policy loss to be between 0 and 1
         policy_loss = policy_loss / torch.log(torch.tensor(4.0, device=self.device))
+        policy_loss = torch.clamp(policy_loss, 0.0, 50.0)
+        policy_loss = policy_loss / 50.0
         
         # Compute value loss (MSE)
         predicted_value = self.value_function(
@@ -316,8 +317,6 @@ class BayesianHoldem(nn.Module):
         )
         value_loss = F.mse_loss(torch.tensor(predicted_value, device=self.device), target_value)
 
-        print(f"policy_loss: {policy_loss.item()}, value_loss: {value_loss.item()}")
-        
         # Combine losses with weights
         total_loss = policy_weight * policy_loss + value_weight * value_loss
         
@@ -396,7 +395,7 @@ class BayesianHoldem(nn.Module):
                   max_stack: int = 20000,
                   discount_factor: float = 0.95,
                   policy_weight: float = 1.0,
-                  value_weight: float = 1.0) -> Tuple[float, float, float]:
+                  value_weight: float = 2.0) -> Tuple[float, float, float]:
         """
         Perform a single training step.
         
