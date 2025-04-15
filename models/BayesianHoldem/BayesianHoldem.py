@@ -111,8 +111,8 @@ class BayesianHoldem(nn.Module):
         
         # Exploration parameters
         self.initial_epsilon = 1.0
-        self.final_epsilon = 0.01
-        self.epsilon_decay = 0.995
+        self.final_epsilon = 0.1
+        self.epsilon_decay = 0.999999
         self.current_epsilon = self.initial_epsilon
         self.training_steps = 0
         
@@ -201,8 +201,8 @@ class BayesianHoldem(nn.Module):
             if training and torch.rand(1, device=self.device) < self.current_epsilon:
                 # Random action
                 action = torch.randint(0, 4, (1,), device=self.device).item()
-                if self.training_steps % 1000 == 0:  # Print exploration rate periodically
-                    print(f"Exploration rate: {self.current_epsilon:.4f}")
+                #if self.training_steps % 5000 == 0:  # Print exploration rate periodically
+                    #print(f"Exploration rate: {self.current_epsilon:.4f}")
             else:
                 # Greedy action
                 action = output_prob.argmax().item()

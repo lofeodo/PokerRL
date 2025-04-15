@@ -55,7 +55,7 @@ class PolyakSelfPlayPokerGame(SelfPlayPokerGame):
             if available_models:
                 chosen_model = random.choice(available_models)
                 model_path = os.path.join(best_models_dir, f'best_{chosen_model}.pt')
-                print(f"\nLoading best {chosen_model} model as Player1")
+                print(f"Loading best {chosen_model} model as Player1")
                 
                 # Load both model state dict and Elo
                 checkpoint = torch.load(model_path)
