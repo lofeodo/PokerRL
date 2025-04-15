@@ -11,6 +11,9 @@ from GameRepresentations import GameRepresentations
 from datetime import datetime, timedelta
 from tqdm import tqdm  # Add this import at the top of your file
 import random  # Add at the top with other imports
+import psutil
+import sys
+from time import perf_counter
 
 # ==================================================
 
@@ -263,6 +266,14 @@ class SelfPlayPokerGame(ABC):
                     'losses': losses,
                     'transition': transition
                 })
+                
+                # Track action for statistics
+                if not hasattr(self, 'training_stats'):
+                    self.training_stats = {'action_metrics': []}
+                self.training_stats['action_metrics'].append({
+                    'player_id': player_id,
+                    'action': action
+                })
         
         return round_metrics
 
@@ -366,7 +377,9 @@ class SelfPlayPokerGame(ABC):
             'total_player0_wins': 0,  # Total wins for Player 0
             'total_player1_wins': 0,  # Total wins for Player 1
             'total_hands_played': 0,  # Total hands played
-            'total_stack_delta': 0.0  # Total stack delta
+            'total_stack_delta': 0.0,  # Total stack delta
+            'session_actions': [],  # Action counts per session
+            'action_names': ['fold', 'check/call', 'bet/raise', 'all-in']  # Action names for reference
         }
 
     def _update_session_metrics(self, training_stats: dict, session_duration: float):
@@ -395,12 +408,34 @@ class SelfPlayPokerGame(ABC):
         self.session_metrics['total_player1_wins'] += training_stats['player1_wins']
         self.session_metrics['total_hands_played'] += training_stats['total_hands']
         self.session_metrics['total_stack_delta'] += training_stats['total_stack_delta']
+        
+        # Update action counts for this session
+        action_counts = [0] * 4  # Initialize counts for each action
+        for metric in self.training_stats.get('action_metrics', []):
+            if metric['player_id'] == 0:  # Only track Player0's actions
+                action_counts[metric['action']] += 1
+        self.session_metrics['session_actions'].append(action_counts)
+        
+        # Clear training stats to free memory
+        for key, value in self.training_stats.items():
+            if isinstance(value, list):
+                value.clear()
+
+        # Clear training stats to free memory
+        for key, value in training_stats.items():
+            if isinstance(value, list):
+                training_stats[key].clear()
+        training_stats['player0_wins'] = 0
+        training_stats['player1_wins'] = 0
+        training_stats['total_hands'] = 0
+        training_stats['total_stack_delta'] = 0.0
 
     def run_training_session(self, 
                            num_games: int = 1000, 
                            verbose: bool = False,
                            save_interval: int = 100,
-                           save_path: Optional[str] = None) -> dict:
+                           save_path: Optional[str] = None,
+                           profiling: bool = False) -> dict:
         """
         Run a full training session with multiple games.
         
@@ -409,11 +444,17 @@ class SelfPlayPokerGame(ABC):
             verbose: Whether to print detailed progress information
             save_interval: How often to save checkpoints
             save_path: Directory to save checkpoints
+            profiling: Whether to enable memory and time profiling
             
         Returns:
             Dict containing training statistics for the session
         """
-        session_start_time = time.time()
+        process = psutil.Process() if profiling else None
+        session_start = perf_counter()
+        
+        if profiling:
+            print(f"\nInitial memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
+        
         training_stats = {
             'player0_wins': 0,
             'player1_wins': 0,
@@ -433,9 +474,18 @@ class SelfPlayPokerGame(ABC):
         if not hasattr(self, 'player1_elo'):
             self.player1_elo = 1000.0  # Changed from 1500 to 1000
         
+        total_game_time = 0 if profiling else None
+        total_loss_calc_time = 0 if profiling else None
+        total_metric_update_time = 0 if profiling else None
+        
         # Use tqdm to create a progress bar for the number of games
         for game_idx in tqdm(range(num_games), desc="Training Games", unit="game"):
+            # Time game execution
+            game_start = perf_counter() if profiling else None
             game_result = self.run_game(verbose=verbose, training=True)
+            if profiling:
+                game_time = perf_counter() - game_start
+                total_game_time += game_time
             
             winner = game_result['winner']
             if winner == 0:
@@ -443,6 +493,8 @@ class SelfPlayPokerGame(ABC):
             else:
                 training_stats['player1_wins'] += 1
             
+            # Time loss calculation and aggregation
+            loss_start = perf_counter() if profiling else None
             # Update Elo ratings
             self._update_elo(winner == 0)
             training_stats['player0_elo'].append(self.player0_elo)
@@ -451,24 +503,30 @@ class SelfPlayPokerGame(ABC):
             # Calculate BB/Hand
             num_hands = len([m for m in game_result['metrics'] if m['player_id'] == 0])
             stack_delta = game_result['final_rewards'][0]  # Player 0's profit/loss
+            
             if verbose and (game_idx + 1) % 10 == 0:  # Add debug prints
                 print(f"\nDebug - Game {game_idx + 1}:")
                 print(f"Stack Delta: {stack_delta:.2f} chips ({stack_delta/self.BB:.2f} BB)")
                 print(f"Number of Hands: {num_hands}")
-
+            
             training_stats['total_hands'] += num_hands
             training_stats['total_stack_delta'] += stack_delta
             bb_per_hand = self._calculate_bb_per_hand(stack_delta, num_hands)
             training_stats['bb_per_hand'].append(bb_per_hand.item())
             
-            # Aggregate losses
+            # Aggregate losses - only keep the last 1000 losses to prevent memory growth
             for metric in game_result['metrics']:
                 if metric['player_id'] == 0:
                     total_loss, policy_loss, value_loss = metric['losses']
                     training_stats['total_losses'].append(total_loss)
                     training_stats['policy_losses'].append(policy_loss)
                     training_stats['value_losses'].append(value_loss)
+                    
+            if profiling:
+                loss_time = perf_counter() - loss_start
+                total_loss_calc_time += loss_time
             
+            # Time metric updates
             total_games = training_stats['player0_wins'] + training_stats['player1_wins']
             current_win_rate = training_stats['player0_wins'] / max(1, total_games)
             
@@ -482,14 +540,28 @@ class SelfPlayPokerGame(ABC):
                 print(f"Player 1 Elo: {self.player1_elo:.1f}")
                 if training_stats['total_losses']:
                     print(f"Average total loss: {sum(training_stats['total_losses'][-10:])/10:.4f}")
-        
+            
         # Calculate session duration
-        session_duration = time.time() - session_start_time
+        session_duration = perf_counter() - session_start
+        
+        if profiling:
+            print(f"\nSession Summary:")
+            print(f"Total session time: {session_duration:.2f}s")
+            print(f"Average time per game: {total_game_time/num_games:.3f}s")
+            print(f"Total game execution time: {total_game_time:.2f}s ({total_game_time/session_duration*100:.1f}%)")
+            print(f"Total loss calculation time: {total_loss_calc_time:.2f}s ({total_loss_calc_time/session_duration*100:.1f}%)")
+            print(f"Total metric update time: {total_metric_update_time:.2f}s ({total_metric_update_time/session_duration*100:.1f}%)")
+            print(f"Final memory usage: {process.memory_info().rss / 1024 / 1024:.1f} MB")
+            print(f"Final training stats sizes:")
+            for key, value in training_stats.items():
+                if isinstance(value, list):
+                    print(f"- {key}: {len(value)} items")
+            for key, value in self.session_metrics.items():
+                if isinstance(value, list):
+                    print(f"- {key}: {len(value)} items")
         
         # Update session metrics
         self._update_session_metrics(training_stats, session_duration)
-        
-        return training_stats
 
     @abstractmethod
     def load_models_for_training_session(self, save_path: Optional[str] = None):
@@ -549,24 +621,24 @@ class SelfPlayPokerGame(ABC):
             
         return best_win_rate, best_bb_per_hand, best_elo
 
-    def train_sessions(self,
+    def train_for_sessions(self,
                       num_sessions: int = 10,
                       games_per_session: int = 1000,
                       save_path: Optional[str] = None,
                       plot_path: Optional[str] = None,
-                      verbose: bool = False) -> Dict:
+                      verbose: bool = False,
+                      profiling: bool = False) -> Dict:
         """Train the model over multiple sessions with k-best self play."""
-        if save_path:
-            os.makedirs(save_path, exist_ok=True)
-            best_models_dir = os.path.join(save_path, 'best_models')
-            os.makedirs(best_models_dir, exist_ok=True)
+        total_start = perf_counter()
+        process = psutil.Process() if profiling else None
         
-        best_win_rate = 0.5
-        best_bb_per_hand = 0.0
-        best_elo = 1000.0
+        # Initialize best metrics
+        best_win_rate = 0.0
+        best_bb_per_hand = float('-inf')
+        best_elo = float('-inf')
         
         for session in range(num_sessions):
-            session_start_time = time.time()
+            session_start_time = perf_counter()
             print(f"\n========= Starting Training Session {session + 1}/{num_sessions} =========")
             
             # Every 5 sessions, load new models
@@ -574,17 +646,18 @@ class SelfPlayPokerGame(ABC):
                 self.load_models_for_training_session(save_path)
             
             # Run training session
-            session_stats = self.run_training_session(
+            self.run_training_session(
                 num_games=games_per_session,
                 verbose=verbose,
                 save_interval=games_per_session,
-                save_path=save_path
+                save_path=save_path,
+                profiling=profiling
             )
             
-            # Get current metrics
-            current_win_rate = session_stats['win_rate']
-            current_bb_per_hand = session_stats['bb_per_hand']
-            current_elo = session_stats['player0_elo']
+            # Calculate current metrics from session_metrics
+            current_win_rate = self.session_metrics['session_win_rates'][-1]
+            current_bb_per_hand = self.session_metrics['session_bb_per_hand'][-1]
+            current_elo = self.session_metrics['session_player0_elo'][-1]
             
             # Update and save best models if current metrics are better
             if save_path:
@@ -594,8 +667,7 @@ class SelfPlayPokerGame(ABC):
                 )
             
             # Print session summary
-            print(f"Average loss: {sum(session_stats['total_losses'])/len(session_stats['total_losses']):.4f}")
-            print(f"\nSession {session + 1} completed in {time.time() - session_start_time:.1f}s")
+            print(f"\nSession {session + 1} completed in {perf_counter() - session_start_time:.1f}s")
             print(f"Win rate: {current_win_rate:.3f}")
             print(f"BB/hand: {current_bb_per_hand:.3f}")
             print(f"Elo rating: {current_elo:.1f}")
@@ -609,10 +681,17 @@ class SelfPlayPokerGame(ABC):
             if plot_path:
                 os.makedirs(plot_path, exist_ok=True)
                 Utilities.plot_all_stats(
-                    self.session_metrics,
+                    self.session_metrics,  # Use session_metrics instead of training_stats
                     os.path.join(plot_path, f'session_{session + 1}'),
                     show=False
                 )
+        
+        if profiling:
+            total_duration = perf_counter() - total_start
+            print(f"\nTotal Training Summary:")
+            print(f"Total training time: {total_duration:.2f}s")
+            print(f"Average time per session: {total_duration/num_sessions:.2f}s")
+            print(f"Final memory usage: {process.memory_info().rss / 1024 / 1024:.1f} MB")
         
         # Print final training summary
         print("\n========= Training Complete =========")
@@ -631,7 +710,8 @@ class SelfPlayPokerGame(ABC):
                            games_per_session: int = 50, 
                            save_path: str = None, 
                            plot_path: str = None,
-                           verbose: bool = False):
+                           verbose: bool = False,
+                           profiling: bool = False):
         """
         Train the model for a specified duration with k-best self play.
         
@@ -641,13 +721,14 @@ class SelfPlayPokerGame(ABC):
             save_path (str): Directory to save models and checkpoints
             plot_path (str): Directory to save plots
             verbose (bool): Whether to print detailed progress
+            profiling (bool): Whether to enable memory and time profiling
         """
         start_time = datetime.now()
         end_time = start_time + duration
         session = 0
-        best_win_rate = 0.5
-        best_bb_per_hand = 0.0
-        best_elo = 1000.0
+        best_win_rate = 0.0
+        best_bb_per_hand = float('-inf')
+        best_elo = float('-inf')
         
         # Create directories if they don't exist
         if save_path:
@@ -655,8 +736,14 @@ class SelfPlayPokerGame(ABC):
             best_models_dir = os.path.join(save_path, 'best_models')
             os.makedirs(best_models_dir, exist_ok=True)
         
+        process = psutil.Process() if profiling else None
+        total_start = perf_counter() if profiling else None
+        
+        if profiling:
+            print(f"\nInitial memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
+        
         while datetime.now() < end_time:
-            session_start_time = time.time()
+            session_start_time = perf_counter()
             session += 1
             print(f"\n========= Starting Training Session {session} =========")
             print(f"Time remaining: {end_time - datetime.now()}")
@@ -666,17 +753,18 @@ class SelfPlayPokerGame(ABC):
                 self.load_models_for_training_session(save_path)
             
             # Run training session
-            session_stats = self.run_training_session(
+            self.run_training_session(
                 num_games=games_per_session,
                 verbose=verbose,
                 save_interval=games_per_session,
-                save_path=save_path
+                save_path=save_path,
+                profiling=profiling
             )
             
             # Calculate current metrics from session_stats
-            total_games = session_stats['player0_wins'] + session_stats['player1_wins']
-            current_win_rate = session_stats['player0_wins'] / max(1, total_games)
-            current_bb_per_hand = sum(session_stats['bb_per_hand']) / max(1, len(session_stats['bb_per_hand']))
+            total_games = self.session_metrics['total_player0_wins'] + self.session_metrics['total_player1_wins']
+            current_win_rate = self.session_metrics['total_player0_wins'] / max(1, total_games)
+            current_bb_per_hand = sum(self.session_metrics['session_bb_per_hand']) / max(1, len(self.session_metrics['session_bb_per_hand']))
             current_elo = self.player0_elo  # Use the current Elo rating
             
             # Update and save best models if current metrics are better
@@ -685,9 +773,9 @@ class SelfPlayPokerGame(ABC):
                     save_path, current_win_rate, current_bb_per_hand, current_elo,
                     best_win_rate, best_bb_per_hand, best_elo
                 )
-            
+
             # Print session summary
-            print(f"\nSession {session} completed in {time.time() - session_start_time:.1f}s")
+            print(f"\nSession {session} completed in {perf_counter() - session_start_time}s")
             print(f"Win rate: {100*current_win_rate:.1f}%")
             print(f"BB/hand: {current_bb_per_hand:.3f}")
             print(f"Elo rating: {current_elo:.1f}")
@@ -699,6 +787,13 @@ class SelfPlayPokerGame(ABC):
             
             # Optional: Add a small delay between sessions
             time.sleep(1)
+
+        if profiling:
+            total_duration = perf_counter() - total_start
+            print(f"\nTotal Training Summary:")
+            print(f"Total training time: {total_duration:.2f}s")
+            print(f"Average time per session: {total_duration/session:.2f}s")
+            print(f"Final memory usage: {process.memory_info().rss / 1024 / 1024:.1f} MB")
 
         if plot_path is not None:
             os.makedirs(plot_path, exist_ok=True)
