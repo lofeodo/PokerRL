@@ -639,7 +639,7 @@ class SelfPlayPokerGame(ABC):
         
         for session in range(num_sessions):
             session_start_time = perf_counter()
-            print(f"\n========= Starting Training Session {session + 1}/{num_sessions} =========")
+            print(f"========= Starting Training Session {session + 1}/{num_sessions} =========")
             
             # Every 5 sessions, load new models
             if session > 0 and session % 5 == 0:
@@ -667,10 +667,11 @@ class SelfPlayPokerGame(ABC):
                 )
             
             # Print session summary
-            print(f"\nSession {session + 1} completed in {perf_counter() - session_start_time:.1f}s")
-            print(f"Win rate: {current_win_rate:.3f}")
-            print(f"BB/hand: {current_bb_per_hand:.3f}")
-            print(f"Elo rating: {current_elo:.1f}")
+            if session % 10 == 0:   
+                print(f"\nSession {session + 1} completed in {perf_counter() - session_start_time:.1f}s")
+                print(f"Win rate: {current_win_rate:.3f}")
+                print(f"BB/hand: {current_bb_per_hand:.3f}")
+                print(f"Elo rating: {current_elo:.1f}")
             
             # Save session metrics
             if save_path:
@@ -745,8 +746,8 @@ class SelfPlayPokerGame(ABC):
         while datetime.now() < end_time:
             session_start_time = perf_counter()
             session += 1
-            print(f"\n========= Starting Training Session {session} =========")
-            print(f"Time remaining: {end_time - datetime.now()}")
+            if session % 10 == 0:
+                print(f"========= Starting Training Session {session}, time remaining: {end_time - datetime.now()} =========")
             
             # Every 5 sessions, load new models
             if session > 1 and session % 5 == 0:
@@ -775,10 +776,20 @@ class SelfPlayPokerGame(ABC):
                 )
 
             # Print session summary
-            print(f"\nSession {session} completed in {perf_counter() - session_start_time}s")
-            print(f"Win rate: {100*current_win_rate:.1f}%")
-            print(f"BB/hand: {current_bb_per_hand:.3f}")
-            print(f"Elo rating: {current_elo:.1f}")
+            if session % 10 == 0:
+                print(f"\nSession {session} completed in {perf_counter() - session_start_time}s")
+                print(f"Win rate: {100*current_win_rate:.1f}%")
+                print(f"BB/hand: {current_bb_per_hand:.3f}")
+                print(f"Elo rating: {current_elo:.1f}")
+                print(f"Action disitrbutions (previous 10 sessions):")
+                print(f"Fold: {sum(self.session_metrics['session_actions'][-10:][0])/10/games_per_session:.3f}, \
+                      Check/call: {sum(self.session_metrics['session_actions'][-10:][1])/10/games_per_session:.3f}, \
+                      Bet/raise: {sum(self.session_metrics['session_actions'][-10:][2])/10/games_per_session:.3f}, \
+                      All-in: {sum(self.session_metrics['session_actions'][-10:][3])/10/games_per_session:.3f}")
+                print(f"Losses (previous 10 sessions):")
+                print(f"Total: {sum(self.session_metrics['session_total_losses'][-10:])/10/games_per_session:.3f}", \
+                      f"Policy: {sum(self.session_metrics['session_policy_losses'][-10:])/10/games_per_session:.3f}", \
+                      f"Value: {sum(self.session_metrics['session_value_losses'][-10:])/10/games_per_session:.3f}")
             
             # Check if we should continue training
             if datetime.now() >= end_time:
