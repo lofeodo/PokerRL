@@ -245,27 +245,24 @@ class BayesianHoldem(nn.Module):
         if is_terminal:
             if is_winner:
                 # Terminal state win: gain the pot
-                reward = torch.tensor(normalized_pot, device=self.device)
+                reward = torch.tensor(2 * normalized_pot, device=self.device)
             else:
                 # Terminal state loss: lose our contribution to pot
-                reward = torch.tensor(-normalized_pot, device=self.device)
+                reward = torch.tensor(-1.5 * normalized_pot, device=self.device)
         else:
             # Non-terminal states: immediate stack change + future pot value
             if action == 0:  # Fold
-                stack_delta = 0  # No immediate stack change
-                reward = torch.tensor(-3 * normalized_pot, device=self.device)  # Penalty for folding
+                reward = torch.tensor(-0.5 * normalized_pot, device=self.device)  # Penalty for folding
             elif action == 1:  # Check/Call
-                stack_delta = 0  # No immediate stack change
-                pot_contribution = 3 * normalized_pot  # Expected value from pot
+                pot_contribution = 1 * normalized_pot  # Expected value from pot
                 reward = torch.tensor(pot_contribution, device=self.device)
             elif action == 2:  # Bet/Raise
                 stack_delta = -bb  # Immediate stack decrease
-                pot_contribution = 10 * normalized_pot  # Higher expected value from pot due to fold equity
+                pot_contribution = 2 * normalized_pot  # Higher expected value from pot due to fold equity
                 reward = torch.tensor((stack_delta / max_stack) + pot_contribution, device=self.device)
             elif action == 3:  # All-in
-                stack_delta = -stack_size  # Immediate stack decrease
-                pot_contribution = normalized_pot  # Maximum expected value from pot
-                reward = torch.tensor((stack_delta / max_stack) + pot_contribution, device=self.device)
+                pot_contribution = 0.25 * normalized_pot  # Maximum expected value from pot
+                reward = torch.tensor(pot_contribution, device=self.device)
 
             # Scale reward by action probability to encourage exploration
             reward *= action_probs[action]
