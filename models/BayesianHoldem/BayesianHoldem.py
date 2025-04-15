@@ -245,32 +245,31 @@ class BayesianHoldem(nn.Module):
         if is_terminal:
             if is_winner:
                 # Terminal state win: gain the pot
-                stack_delta = pot_size
-                reward = torch.tensor(stack_delta / max_stack, device=self.device)
+                reward = torch.tensor(normalized_pot, device=self.device)
             else:
                 # Terminal state loss: lose our contribution to pot
-                stack_delta = -pot_size
-                reward = torch.tensor(stack_delta / max_stack, device=self.device)
+                reward = torch.tensor(-normalized_pot, device=self.device)
         else:
             # Non-terminal states: immediate stack change + future pot value
             if action == 0:  # Fold
                 stack_delta = 0  # No immediate stack change
-                reward = torch.tensor(-0.3 * normalized_pot, device=self.device)  # Penalty for folding
+                reward = torch.tensor(-3 * normalized_pot, device=self.device)  # Penalty for folding
             elif action == 1:  # Check/Call
                 stack_delta = 0  # No immediate stack change
-                pot_contribution = 0.5 * normalized_pot  # Expected value from pot
+                pot_contribution = 3 * normalized_pot  # Expected value from pot
                 reward = torch.tensor(pot_contribution, device=self.device)
             elif action == 2:  # Bet/Raise
                 stack_delta = -bb  # Immediate stack decrease
-                pot_contribution = 0.7 * normalized_pot  # Higher expected value from pot due to fold equity
+                pot_contribution = 10 * normalized_pot  # Higher expected value from pot due to fold equity
                 reward = torch.tensor((stack_delta / max_stack) + pot_contribution, device=self.device)
             elif action == 3:  # All-in
                 stack_delta = -stack_size  # Immediate stack decrease
                 pot_contribution = normalized_pot  # Maximum expected value from pot
                 reward = torch.tensor((stack_delta / max_stack) + pot_contribution, device=self.device)
-            
+
             # Scale reward by action probability to encourage exploration
             reward *= action_probs[action]
+
             
         return reward.item()
 
@@ -280,7 +279,9 @@ class BayesianHoldem(nn.Module):
                        stack_size: float,
                        bet_size: float,
                        max_stack: int = 20000,
-                       discount_factor: float = 0.95) -> float:
+                       discount_factor: float = 0.95,
+                       is_terminal: bool = False,
+                       is_winner: bool = None) -> float:
         """
         Compute the value (expected future rewards) of a given state.
         
@@ -291,6 +292,8 @@ class BayesianHoldem(nn.Module):
             bet_size: float, current bet size
             max_stack: int, maximum possible stack size
             discount_factor: float, discount factor for future rewards (gamma)
+            is_terminal: bool, whether this is a terminal state
+            is_winner: bool, whether the player won (only used for terminal states)
             
         Returns:
             float: The estimated value of the state
@@ -305,14 +308,15 @@ class BayesianHoldem(nn.Module):
         value = torch.zeros(1, device=self.device)
         
         # For each possible action, compute Q(s,a) and weight by action probability
-        for action in range(4):
+        for action in range(4):  
             # Compute immediate reward for the action
             immediate_reward = self.compute_rewards(
                 output=output,
                 action=action,
                 pot_size=pot_size,
                 stack_size=stack_size,
-                is_terminal=False,
+                is_terminal=is_terminal,
+                is_winner=is_winner,
                 max_stack=max_stack
             )
             
@@ -326,7 +330,7 @@ class BayesianHoldem(nn.Module):
                 future_value = normalized_stack - normalized_bet + 0.7 * (normalized_pot + normalized_bet)
             else:  # All-in
                 # Maximum risk/reward: lose all stack but potential to win full pot
-                future_value = normalized_pot + normalized_stack
+                future_value = normalized_stack
             
             # Combine immediate and future rewards with discount factor
             q_value = torch.tensor(immediate_reward, device=self.device) + discount_factor * future_value
@@ -374,8 +378,8 @@ class BayesianHoldem(nn.Module):
 
         # Normalize policy loss to be between 0 and 1
         policy_loss = policy_loss / torch.log(torch.tensor(4.0, device=self.device))
-        policy_loss = torch.clamp(policy_loss, 0.0, 50.0)
-        policy_loss = policy_loss / 50.0
+        policy_loss = torch.clamp(policy_loss, 0.0, 500.0)
+        policy_loss = policy_loss / 100.0
         
         # Compute value loss (MSE)
         predicted_value = self.value_function(
@@ -400,6 +404,8 @@ class BayesianHoldem(nn.Module):
                              stack_size: float,
                              bet_size: float,
                              actual_return: float,
+                             is_terminal: bool = False,
+                             is_winner: bool = None,
                              max_stack: int = 20000,
                              epsilon: float = 0.1,
                              use_expert: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
@@ -412,6 +418,9 @@ class BayesianHoldem(nn.Module):
             pot_size: float, current size of the pot
             stack_size: float, current stack size
             bet_size: float, current bet size
+            actual_return: float, the actual return (or bootstrapped return) for this state
+            is_terminal: bool, whether this is a terminal state
+            is_winner: bool, whether the player won (only used for terminal states)
             max_stack: int, maximum possible stack size
             epsilon: float, exploration rate for epsilon-greedy
             use_expert: bool, whether to use expert targets when available
@@ -433,12 +442,7 @@ class BayesianHoldem(nn.Module):
             target_action[expert_action] = 1.0
         else:
             # Epsilon-greedy exploration
-            if torch.rand(1, device=self.device) < epsilon:
-                # Random action
-                action = torch.randint(0, 4, (1,), device=self.device).item()
-            else:
-                # Greedy action
-                action = action_probs.argmax().item()
+            action = self.predict_action(action_representation, card_representation, training=True)
             target_action[action] = 1.0
         
         # Compute target value
@@ -463,6 +467,8 @@ class BayesianHoldem(nn.Module):
                   stack_size: float,
                   bet_size: float,
                   actual_return: float,
+                  is_terminal: bool = False,
+                  is_winner: bool = None,
                   max_stack: int = 20000,
                   discount_factor: float = 0.95,
                   policy_weight: float = 1.0,
@@ -477,6 +483,8 @@ class BayesianHoldem(nn.Module):
             stack_size: float, current stack size
             bet_size: float, current bet size
             actual_return: float, the actual return (or bootstrapped return) for this state
+            is_terminal: bool, whether this is a terminal state
+            is_winner: bool, whether the player won (only used for terminal states)
             max_stack: int, maximum possible stack size
             discount_factor: float, discount factor for future rewards
             policy_weight: float, weight for policy loss
@@ -491,7 +499,9 @@ class BayesianHoldem(nn.Module):
             actual_return=actual_return,
             pot_size=pot_size,
             stack_size=stack_size,
-            bet_size=bet_size
+            bet_size=bet_size,
+            is_terminal=is_terminal,
+            is_winner=is_winner
         )
 
         # Zero gradients
@@ -507,7 +517,9 @@ class BayesianHoldem(nn.Module):
             stack_size=stack_size,
             bet_size=bet_size,
             max_stack=max_stack,
-            discount_factor=discount_factor
+            discount_factor=discount_factor,
+            is_terminal=is_terminal,
+            is_winner=is_winner
         )
                 
         # Compute loss

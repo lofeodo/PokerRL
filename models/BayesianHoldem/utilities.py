@@ -181,6 +181,36 @@ class Utilities:
         plt.close()
 
     @staticmethod
+    def plot_action_distribution(stats: dict, save_path: str = None, show: bool = True):
+        """Plot the distribution of actions across sessions."""
+        if 'session_actions' not in stats:
+            print("No action data available to plot")
+            return
+            
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        fig.suptitle('Action Distribution Across Sessions', fontsize=16)
+        
+        action_names = ['Fold', 'Check/Call', 'Bet/Raise', 'All-in']
+        sessions = np.arange(1, len(stats['session_actions']) + 1)
+        
+        # Plot each action type
+        for i, (ax, action_name) in enumerate(zip(axes.flat, action_names)):
+            action_counts = [session[i] for session in stats['session_actions']]
+            ax.plot(sessions, action_counts, label=f'{action_name} Count')
+            ax.set_title(f'{action_name} Distribution')
+            ax.set_xlabel('Session')
+            ax.set_ylabel('Count')
+            ax.grid(True)
+            ax.legend()
+        
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path)
+        if show:
+            plt.show()
+        plt.close()
+
+    @staticmethod
     def plot_all_stats(stats: dict, save_dir: str = None, show: bool = True):
         """Plot all statistics."""
         if save_dir:
@@ -189,8 +219,10 @@ class Utilities:
             Utilities.plot_win_distribution(stats, os.path.join(save_dir, 'win_distribution.png'), show)
             Utilities.plot_loss_distribution(stats, os.path.join(save_dir, 'loss_distribution.png'), show)
             Utilities.plot_learning_progress(stats, os.path.join(save_dir, 'learning_progress.png'), show)
+            Utilities.plot_action_distribution(stats, os.path.join(save_dir, 'action_distribution.png'), show)
         else:
             Utilities.plot_training_stats(stats, show=show)
             Utilities.plot_win_distribution(stats, show=show)
             Utilities.plot_loss_distribution(stats, show=show)
-            Utilities.plot_learning_progress(stats, show=show) 
+            Utilities.plot_learning_progress(stats, show=show)
+            Utilities.plot_action_distribution(stats, show=show) 
