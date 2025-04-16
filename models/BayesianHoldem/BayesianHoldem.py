@@ -111,8 +111,8 @@ class BayesianHoldem(nn.Module):
         
         # Exploration parameters
         self.initial_epsilon = 1.0
-        self.final_epsilon = 0.01
-        self.epsilon_decay = 0.995
+        self.final_epsilon = 0.1
+        self.epsilon_decay = 0.999999
         self.current_epsilon = self.initial_epsilon
         self.training_steps = 0
         
@@ -201,8 +201,8 @@ class BayesianHoldem(nn.Module):
             if training and torch.rand(1, device=self.device) < self.current_epsilon:
                 # Random action
                 action = torch.randint(0, 4, (1,), device=self.device).item()
-                if self.training_steps % 1000 == 0:  # Print exploration rate periodically
-                    print(f"Exploration rate: {self.current_epsilon:.4f}")
+                #if self.training_steps % 5000 == 0:  # Print exploration rate periodically
+                    #print(f"Exploration rate: {self.current_epsilon:.4f}")
             else:
                 # Greedy action
                 action = output_prob.argmax().item()
@@ -245,27 +245,24 @@ class BayesianHoldem(nn.Module):
         if is_terminal:
             if is_winner:
                 # Terminal state win: gain the pot
-                reward = torch.tensor(normalized_pot, device=self.device)
+                reward = torch.tensor(2 * normalized_pot, device=self.device)
             else:
                 # Terminal state loss: lose our contribution to pot
-                reward = torch.tensor(-normalized_pot, device=self.device)
+                reward = torch.tensor(-1.5 * normalized_pot, device=self.device)
         else:
             # Non-terminal states: immediate stack change + future pot value
             if action == 0:  # Fold
-                stack_delta = 0  # No immediate stack change
-                reward = torch.tensor(-3 * normalized_pot, device=self.device)  # Penalty for folding
+                reward = torch.tensor(-0.5 * normalized_pot, device=self.device)  # Penalty for folding
             elif action == 1:  # Check/Call
-                stack_delta = 0  # No immediate stack change
-                pot_contribution = 3 * normalized_pot  # Expected value from pot
+                pot_contribution = 1 * normalized_pot  # Expected value from pot
                 reward = torch.tensor(pot_contribution, device=self.device)
             elif action == 2:  # Bet/Raise
                 stack_delta = -bb  # Immediate stack decrease
-                pot_contribution = 10 * normalized_pot  # Higher expected value from pot due to fold equity
+                pot_contribution = 2 * normalized_pot  # Higher expected value from pot due to fold equity
                 reward = torch.tensor((stack_delta / max_stack) + pot_contribution, device=self.device)
             elif action == 3:  # All-in
-                stack_delta = -stack_size  # Immediate stack decrease
-                pot_contribution = normalized_pot  # Maximum expected value from pot
-                reward = torch.tensor((stack_delta / max_stack) + pot_contribution, device=self.device)
+                pot_contribution = 0.25 * normalized_pot  # Maximum expected value from pot
+                reward = torch.tensor(pot_contribution, device=self.device)
 
             # Scale reward by action probability to encourage exploration
             reward *= action_probs[action]

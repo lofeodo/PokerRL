@@ -14,6 +14,7 @@ import random  # Add at the top with other imports
 import psutil
 import sys
 from time import perf_counter
+import wandb
 
 # ==================================================
 
@@ -597,7 +598,7 @@ class SelfPlayPokerGame(ABC):
                 'model_state_dict': self.Player0.state_dict(),
                 'elo': self.player0_elo
             }, os.path.join(best_models_dir, 'best_winrate.pt'))
-            print(f"\nSaved new best win rate model: {best_win_rate:.4f} with Elo: {self.player0_elo:.1f}")
+            print(f"Saved new best win rate model: {best_win_rate:.4f} with Elo: {self.player0_elo:.1f}")
         
         # Update and save best BB/hand model
         if current_bb_per_hand > best_bb_per_hand:
@@ -607,7 +608,7 @@ class SelfPlayPokerGame(ABC):
                 'model_state_dict': self.Player0.state_dict(),
                 'elo': self.player0_elo
             }, os.path.join(best_models_dir, 'best_bbhand.pt'))
-            print(f"\nSaved new best BB/hand model: {best_bb_per_hand:.4f} with Elo: {self.player0_elo:.1f}")
+            print(f"Saved new best BB/hand model: {best_bb_per_hand:.4f} with Elo: {self.player0_elo:.1f}")
         
         # Update and save best Elo model
         if current_elo > best_elo:
@@ -617,7 +618,7 @@ class SelfPlayPokerGame(ABC):
                 'model_state_dict': self.Player0.state_dict(),
                 'elo': self.player0_elo
             }, os.path.join(best_models_dir, 'best_elo.pt'))
-            print(f"\nSaved new best Elo model: {best_elo:.1f}")
+            print(f"Saved new best Elo model: {best_elo:.1f}")
             
         return best_win_rate, best_bb_per_hand, best_elo
 
@@ -629,6 +630,7 @@ class SelfPlayPokerGame(ABC):
                       verbose: bool = False,
                       profiling: bool = False) -> Dict:
         """Train the model over multiple sessions with k-best self play."""
+        wandb.init(project="PokerRL", name="train_run_1")
         total_start = perf_counter()
         process = psutil.Process() if profiling else None
         
@@ -639,7 +641,7 @@ class SelfPlayPokerGame(ABC):
         
         for session in range(num_sessions):
             session_start_time = perf_counter()
-            print(f"\n========= Starting Training Session {session + 1}/{num_sessions} =========")
+            print(f"========= Starting Training Session {session + 1}/{num_sessions} =========")
             
             # Every 5 sessions, load new models
             if session > 0 and session % 5 == 0:
@@ -665,12 +667,43 @@ class SelfPlayPokerGame(ABC):
                     save_path, current_win_rate, current_bb_per_hand, current_elo,
                     best_win_rate, best_bb_per_hand, best_elo
                 )
+                
+                # Save checkpoint every 10 sessions
+                if (session + 1) % 10 == 0:
+                    checkpoint_dir = os.path.join(save_path, 'checkpoints')
+                    os.makedirs(checkpoint_dir, exist_ok=True)
+                    checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_session_{session + 1}.pt')
+                    torch.save({
+                        'model_state_dict': self.Player0.state_dict(),
+                        'elo': self.player0_elo,
+                        'session': session + 1,
+                        'win_rate': current_win_rate,
+                        'bb_per_hand': current_bb_per_hand,
+                        'total_losses': self.session_metrics['session_total_losses'][-1],
+                        'policy_losses': self.session_metrics['session_policy_losses'][-1],
+                        'value_losses': self.session_metrics['session_value_losses'][-1]
+                    }, checkpoint_path)
+            
+            # Log metrics to WandB
+            wandb.log({
+                "session": session + 1,
+                "win_rate": current_win_rate,
+                "bb_per_hand": current_bb_per_hand,
+                "elo": current_elo,
+                "total_losses": self.session_metrics['session_total_losses'][-1],
+                "policy_losses": self.session_metrics['session_policy_losses'][-1],
+                "value_losses": self.session_metrics['session_value_losses'][-1],
+                "epsilon": self.Player0.current_epsilon,
+                "session_time": perf_counter() - session_start_time,
+                "hands_played": self.session_metrics['session_hands_played'][-1],
+            })
             
             # Print session summary
-            print(f"\nSession {session + 1} completed in {perf_counter() - session_start_time:.1f}s")
-            print(f"Win rate: {current_win_rate:.3f}")
-            print(f"BB/hand: {current_bb_per_hand:.3f}")
-            print(f"Elo rating: {current_elo:.1f}")
+            if session % 10 == 0:   
+                print(f"\nSession {session + 1} completed in {perf_counter() - session_start_time:.1f}s")
+                print(f"Win rate: {current_win_rate:.3f}")
+                print(f"BB/hand: {current_bb_per_hand:.3f}")
+                print(f"Elo rating: {current_elo:.1f}")
             
             # Save session metrics
             if save_path:
@@ -685,6 +718,8 @@ class SelfPlayPokerGame(ABC):
                     os.path.join(plot_path, f'session_{session + 1}'),
                     show=False
                 )
+        
+        wandb.finish()
         
         if profiling:
             total_duration = perf_counter() - total_start
@@ -723,6 +758,7 @@ class SelfPlayPokerGame(ABC):
             verbose (bool): Whether to print detailed progress
             profiling (bool): Whether to enable memory and time profiling
         """
+        wandb.init(project="PokerRL", name="train_run_1")
         start_time = datetime.now()
         end_time = start_time + duration
         session = 0
@@ -745,8 +781,8 @@ class SelfPlayPokerGame(ABC):
         while datetime.now() < end_time:
             session_start_time = perf_counter()
             session += 1
-            print(f"\n========= Starting Training Session {session} =========")
-            print(f"Time remaining: {end_time - datetime.now()}")
+            if session % 10 == 0:
+                print(f"========= Starting Training Session {session}, time remaining: {end_time - datetime.now()} =========")
             
             # Every 5 sessions, load new models
             if session > 1 and session % 5 == 0:
@@ -761,7 +797,7 @@ class SelfPlayPokerGame(ABC):
                 profiling=profiling
             )
             
-            # Calculate current metrics from session_stats
+            # Calculate current metrics from session_metrics
             total_games = self.session_metrics['total_player0_wins'] + self.session_metrics['total_player1_wins']
             current_win_rate = self.session_metrics['total_player0_wins'] / max(1, total_games)
             current_bb_per_hand = sum(self.session_metrics['session_bb_per_hand']) / max(1, len(self.session_metrics['session_bb_per_hand']))
@@ -774,11 +810,51 @@ class SelfPlayPokerGame(ABC):
                     best_win_rate, best_bb_per_hand, best_elo
                 )
 
+                # Save checkpoint every 10 sessions
+                if (session + 1) % 10 == 0:
+                    checkpoint_dir = os.path.join(save_path, 'checkpoints')
+                    os.makedirs(checkpoint_dir, exist_ok=True)
+                    checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_session_{session + 1}.pt')
+                    torch.save({
+                        'model_state_dict': self.Player0.state_dict(),
+                        'elo': self.player0_elo,
+                        'session': session + 1,
+                        'win_rate': current_win_rate,
+                        'bb_per_hand': current_bb_per_hand,
+                        'total_losses': self.session_metrics['session_total_losses'][-1],
+                        'policy_losses': self.session_metrics['session_policy_losses'][-1],
+                        'value_losses': self.session_metrics['session_value_losses'][-1]
+                    }, checkpoint_path)
+
+            # Log metrics to WandB
+            wandb.log({
+                "session": session + 1,
+                "win_rate": current_win_rate,
+                "bb_per_hand": current_bb_per_hand,
+                "elo": current_elo,
+                "total_losses": self.session_metrics['session_total_losses'][-1],
+                "policy_losses": self.session_metrics['session_policy_losses'][-1],
+                "value_losses": self.session_metrics['session_value_losses'][-1],
+                "epsilon": self.Player0.current_epsilon,
+                "session_time": perf_counter() - session_start_time,
+                "hands_played": self.session_metrics['session_hands_played'][-1],
+            })
+
             # Print session summary
-            print(f"\nSession {session} completed in {perf_counter() - session_start_time}s")
-            print(f"Win rate: {100*current_win_rate:.1f}%")
-            print(f"BB/hand: {current_bb_per_hand:.3f}")
-            print(f"Elo rating: {current_elo:.1f}")
+            if session % 10 == 0:
+                print(f"\nSession {session} completed in {perf_counter() - session_start_time}s")
+                print(f"Win rate: {100*current_win_rate:.1f}%")
+                print(f"BB/hand: {current_bb_per_hand:.3f}")
+                print(f"Elo rating: {current_elo:.1f}")
+                print(f"Action disitrbutions (previous 10 sessions):")
+                print(f"Fold: {sum(self.session_metrics['session_actions'][-10:][0])/10/games_per_session:.3f}, \
+                      Check/call: {sum(self.session_metrics['session_actions'][-10:][1])/10/games_per_session:.3f}, \
+                      Bet/raise: {sum(self.session_metrics['session_actions'][-10:][2])/10/games_per_session:.3f}, \
+                      All-in: {sum(self.session_metrics['session_actions'][-10:][3])/10/games_per_session:.3f}")
+                print(f"Losses (previous 10 sessions):")
+                print(f"Total: {sum(self.session_metrics['session_total_losses'][-10:])/10/games_per_session:.3f}", \
+                      f"Policy: {sum(self.session_metrics['session_policy_losses'][-10:])/10/games_per_session:.3f}", \
+                      f"Value: {sum(self.session_metrics['session_value_losses'][-10:])/10/games_per_session:.3f}")
             
             # Check if we should continue training
             if datetime.now() >= end_time:
@@ -803,6 +879,8 @@ class SelfPlayPokerGame(ABC):
                 show=False
             )
         
+        wandb.finish()
+
         # Print final best metrics
         print("\nTraining completed!")
         print(f"Best metrics achieved:")
